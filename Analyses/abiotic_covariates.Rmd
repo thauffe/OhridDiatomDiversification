@@ -1,0 +1,294 @@
+---
+title: "Wilke et al. abiotic covariates of diatom diversification"
+author: "Torsten Hauffe"
+date: "December 28, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Load required packages
+library(palinsol)
+library(mgcv)
+library(itsadug)
+
+# Auxiliary functions
+source("AuxiliaryFunctions/finitDeriv.R")
+source("AuxiliaryFunctions/plotCovariate.R")
+```
+
+
+```{r}
+MaxTime <- 1366
+TimeSeq <- seq(0, MaxTime+1, length = 2000+1)
+
+# Add some time before 1.36 million years for PyRateContinuous
+# to include the number of initial species at that time
+# All covariate will be 0 before 1.36 million years
+# and do not exert any influence on 
+# speciation or extinction
+AddTime <- seq(1367, 5000, length.out = 100)
+
+# Glacial/interglacials background for plots
+LR04 <- read.table("Data/LR04_MISboundaries.txt", header = TRUE, check.names = FALSE, skip = 1)
+LR04 <- LR04[-c(5:9), ] # Omit MIS5
+LR04 <- LR04[-c(2:3), ]
+LR04 <- LR04[-c(76:nrow(LR04)), ]
+LR04$Boundary <- as.character(LR04$Boundary)
+LR04$Boundary <- as.numeric(unlist(lapply(strsplit(LR04$Boundary, "/"), function(x) x[2])))
+LR04[, 2] <- LR04[, 2] / 1000
+```
+
+### Medstack
+
+Medstack δ18O planktonic isotope ratios in parts per thousand relative to VPDB
+
+```{r}
+# Read data
+Medstack <- read.table("Data/MEDSTACK_Wang2010.txt", sep = "\t", header = TRUE)
+
+Medstack2 <- data.frame(Age = TimeSeq, 
+                        d18O = approx(x = Medstack$Age, y = Medstack$d18Ostack, xout = TimeSeq)$y)
+# Change per 1000 years:
+Medstack2Change <- (Medstack2$d18O[1:(nrow(Medstack2)-1)] - Medstack2$d18O[2:nrow(Medstack2)]) / 1 
+Medstack2AbsChange <- abs(Medstack2Change)
+# Remove times that are only there for calculating the change in temperature:
+Medstack2 <- Medstack2[-nrow(Medstack2), ]
+
+plotCovariate(Medstack2$Age, Medstack2$d18O, LR04, 
+              ylab = expression(paste(delta^{18}, O[planktonic], "(VPDB \u2030)")),
+              col = "green4", ylim = c(2.8, -2.2))
+
+# Write covariate for PyRateContinuous
+WriteMed <- data.frame(time = c(Medstack2$Age, AddTime) / 100,
+                       Medstack = c(scale(Medstack2$d18O), rep(0, length(AddTime))),
+                       Medstackabschange = c(scale(Medstack2Change), rep(0, length(AddTime))))
+write.table(WriteMed[, c(1, 2)], 
+            file = "Results/Covariates/Medstack.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(WriteMed[, c(1, 3)], 
+            file = "Results/Covariates/Medstackabschange.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+### LR04
+
+LR04 benthic δ18O stack isotope ratios in parts per thousand relative to VPDB
+
+```{r}
+LR04Values <- read.table("Data/LR04stack.txt", header = TRUE, skip = 4, sep = "\t")
+colnames(LR04Values) <- c("Time", "LR04", "SE")
+
+LR04Values2 <- data.frame(time = TimeSeq,
+                          LR04 = approx(x = LR04Values$Time, y = LR04Values$LR04, xout = TimeSeq)$y)
+# Change per 1000 years:
+LR04Change <- LR04Values2$LR04[1:(nrow(LR04Values2)-1)] - LR04Values2$LR04[2:nrow(LR04Values2)] 
+LR04AbsChange <- abs(LR04Change)
+# Remove times that are only there for calculating the change in temperature:
+LR04Values2 <- LR04Values2[-nrow(LR04Values2), ]
+
+plotCovariate(LR04Values2$time, LR04Values2$LR04, LR04, 
+              ylab = expression(paste(delta^{18}, O[benthic], "(VPDB \u2030)")),
+              col = "green4", ylim = c(5.1, 3.1))
+
+# Write covariate for PyRateContinuous
+WriteLR04 <- data.frame(time = c(LR04Values2$time, AddTime) / 100,
+                        LR04 = c(scale(LR04Values2$LR04), rep(0, length(AddTime))),
+                        LR04abschange = c(scale(LR04Change), rep(0, length(AddTime))))
+write.table(WriteLR04[, c(1, 2)], 
+            file = "Results/Covariates/LR04.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(WriteLR04[, c(1, 3)], 
+            file = "Results/Covariates/LR04abschange.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+### Insolation
+
+Northern Hemisphere summer insolation at the latitude of Lake Ohrid (41° N)
+
+```{r}
+data(BER78) 
+SplineT <- seq(0, MaxTime, length = 2000)
+Times <- -seq(-1, MaxTime + 1, length = 2000 + 2) * 1000
+Obl <- function(t) {ber78 = ber78(t)}
+Obls <- data.frame( t(sapply(Times, Obl)) )
+Insolation41 <- rep(NA, length(Times))
+for(i in 1:nrow(Obls)){
+  Insolation41[i] <- Insol_d1d2(
+    orbit = c(eps = as.numeric(Obls[i, 1]), 
+              ecc = as.numeric(Obls[i, 2]), 
+              varpi = as.numeric(Obls[i, 3])), 
+    d1 = 171, d2 = 172, lat = 41*pi/180, S0 = 1368, avg = TRUE)
+}
+# Calculate change
+H <- 1 # Change per kilo year
+Insolation41Change <- (Insolation41[1:(length(Insolation41)-2)] - 
+                         Insolation41[3:(length(Insolation41))]) / 2*H
+Insolation41AbsChange <- abs(Insolation41Change)
+# Remove times that are only there for calculating the change in insolation:
+Insolation41 <- Insolation41[2:(length(Insolation41)-1)] 
+
+plotCovariate(SplineT, Insolation41, LR04,
+              ylab = expression(paste("Summer insolation ", "(W ", m^2,")")),
+              col = "red")
+
+# Write covariate for PyRateContinuous
+WriteIns41 <- data.frame(time = c(SplineT, AddTime) / 100,
+                         Ins41 = c(scale(Insolation41), rep(0, length(AddTime))),
+                         Ins41abschange = c(scale(Insolation41Change), rep(0, length(AddTime))))
+write.table(WriteIns41[, c(1, 2)], 
+            file = "Results/Covariates/Ins41.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(WriteIns41[, c(1, 3)], 
+            file = "Results/Covariates/Ins41abschange.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+### Arboreal pollen
+
+Percentages of arboreal pollen excluding Pinus pollen at Lake Ohrid
+
+```{r}
+ArbPol <- read.table("Data/ArborealPollen.txt", header = TRUE, sep = "\t")
+ArbPol2 <- ArbPol[nrow(ArbPol):1, ]
+ArbPol2[, 1] <- -ArbPol2[, 1]
+# Mark beginn for temporal autocorrelation
+ArbPol2$Start <- c(TRUE, rep(FALSE, nrow(ArbPol2)-1))
+
+# Fit GAM
+APBam1 <- bam(ArborealPollen ~ s(Age, k = 500), data = ArbPol2)
+Rho <- acf(resid_gam(APBam1), plot = FALSE)$acf[2]
+APBam2 <- bam(ArborealPollen ~ s(Age, k = 500), data = ArbPol2, 
+              rho = Rho, AR.start = ArbPol2$Start)
+NewData <- data.frame(Age = -seq(0, MaxTime, length = 2000)) 
+APPredict <- predict(APBam2, newdata = NewData, type = "response", se.fit = FALSE)
+
+# 1st derivative for change in covariate
+APDeriv <- finitDeriv(Gam = APBam2, NewData, H = 0.001, Scale = FALSE)
+APDeriv <- abs(APDeriv)
+
+plotCovariate(-NewData$Age, APPredict, LR04,
+              ylab = "Arboreal pollen (%)",
+              col = "red", ylim = c(0, 100), Raw = ArbPol)
+
+# Write covariate for PyRateContinuous
+WriteArbPol <- data.frame(time = c(-NewData$Age, AddTime) / 100,
+                          ArbPol = c(scale(APPredict), rep(0, length(AddTime))),
+                          ArbPolabschange = c(scale(APDeriv[,2]), rep(0, length(AddTime))))
+write.table(WriteArbPol[, c(1, 2)], 
+            file = "Results/Covariates/ArbPol.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(WriteArbPol[, c(1, 3)], 
+            file = "Results/Covariates/ArbPolabschange.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+### Deciduous oaks
+
+Percentage of pollen from deciduous oaks at Lake Ohrid
+
+```{r}
+DecOaks <- read.table("Data/DeciduousOaks.txt", header = TRUE, sep = "\t")
+DecOaks2 <- DecOaks[nrow(DecOaks):1, ]
+DecOaks2[, 1] <- -DecOaks2[, 1]
+# Mark beginn for temporal autocorrelation
+DecOaks2$Start <- c(TRUE, rep(FALSE, nrow(DecOaks2)-1))
+
+# Fit GAM
+DecOaksBam1 <- bam(DecOak ~ s(Age, k = 500), data = DecOaks2)
+Rho <- acf(resid_gam(DecOaksBam1), plot = FALSE)$acf[2]
+DecOaksBam2 <- bam(DecOak ~ s(Age, k = 500), data = DecOaks2, 
+              rho = Rho, AR.start = DecOaks2$Start)
+NewData <- data.frame(Age = -seq(0, MaxTime, length = 2000)) 
+DecOaksPredict <- predict(DecOaksBam2, newdata = NewData, type = "response", se.fit = FALSE)
+
+# 1st derivative for change in covariate
+DecOaksDeriv <- finitDeriv(Gam = DecOaksBam2, NewData, H = 0.001, Scale = FALSE)
+DecOaksDeriv <- abs(DecOaksDeriv)
+
+plotCovariate(-NewData$Age, DecOaksPredict, LR04,
+              ylab = "Deciduous oaks (%)",
+              col = "red", ylim = c(0, 60), Raw = DecOaks)
+
+# Write covariate for PyRateContinuous
+WriteDecOaks <- data.frame(time = c(-NewData$Age, AddTime) / 100,
+                          DecOaks = c(scale(DecOaksPredict), rep(0, length(AddTime))),
+                          DecOaksabschange = c(scale(DecOaksDeriv[,2]), rep(0, length(AddTime))))
+write.table(WriteDecOaks[, c(1, 2)], 
+            file = "Results/Covariates/DecOaks.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(WriteDecOaks[, c(1, 3)], 
+            file = "Results/Covariates/DecOaksabschange.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+### Lake Ohrid isotope
+
+Lake Ohrid δ18Olakewater based on calcite and siderite δ18O information
+
+### TIC
+
+Lake Ohrid total inorganic carbon (TIC) concentrations
+
+### TOC
+
+Lake Ohrid total organic carbon (TOC) concentrations
+
+# Potassium
+
+Lake Ohrid potassium (K) counts from XRF scanning
+
+### Calcium
+
+Lake Ohrid calcium (Ca) counts from XRF scanning
+
+### Quartz
+
+Lake Ohrid relative sedimentary quartz content
+
+```{r}
+Quartz <- read.table("Data/Quartz.txt", header = TRUE, sep = "\t")
+Quartz2 <- Quartz[nrow(Quartz):1, ]
+Quartz2[, 1] <- -Quartz2[, 1]
+# Mark beginn for temporal autocorrelation
+Quartz2$Start <- c(TRUE, rep(FALSE, nrow(Quartz2)-1))
+
+# Fit GAM
+QuartzBam1 <- bam(Quartz ~ s(Age, k = 500), data = Quartz2)
+Rho <- acf(resid_gam(QuartzBam1), plot = FALSE)$acf[2]
+QuartzBam2 <- bam(Quartz ~ s(Age, k = 500), data = Quartz2, 
+              rho = Rho, AR.start = Quartz2$Start)
+NewData <- data.frame(Age = -seq(0, MaxTime, length = 2000)) 
+QuartzPredict <- predict(QuartzBam2, newdata = NewData, type = "response", se.fit = FALSE)
+
+# 1st derivative for change in covariate
+QuartzDeriv <- finitDeriv(Gam = QuartzBam2, NewData, H = 0.001, Scale = FALSE)
+QuartzDeriv <- abs(QuartzDeriv)
+
+plotCovariate(-NewData$Age, QuartzPredict, LR04,
+              ylab = "Quartz (peak area)",
+              col = "red", ylim = c(0.4, 0), Raw = Quartz)
+
+# Write covariate for PyRateContinuous
+WriteQuartz <- data.frame(time = c(-NewData$Age, AddTime) / 100,
+                          Quartz = c(scale(QuartzPredict), rep(0, length(AddTime))),
+                          Quartzabschange = c(scale(QuartzDeriv[,2]), rep(0, length(AddTime))))
+write.table(WriteQuartz[, c(1, 2)], 
+            file = "Results/Covariates/Quartz.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(WriteQuartz[, c(1, 3)], 
+            file = "Results/Covariates/Quartzabschange.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+### Grain size
+
+Lake Ohrid grain size information (summarized by ordination)
+
+### Plattform and resources
+
+```{r}
+sessionInfo()
+```
+
