@@ -1,16 +1,25 @@
 ---
 title: "Wilke et al. abiotic covariates of diatom diversification"
-author: "Torsten Hauffe"
-date: "December 28, 2019"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+<br>
+
+Trends in all univariate local and regional proxy time series (that is, signal separated from stochastic noise) were recovered by following the modeling protocol for paleoecological time‑series (Simpson 2018). Due to the size of the dataset, the ‘bam’ implementation of the recommended generalized additive models (GAM) was applied using the package ‘mgcv’ 1.8-22 (Wood 2011) for the R 3.6-1 statistical programming language (R Core Team 2019). The auto-regressive option accounted for the temporal autocorrelation in the proxies time-series. Due to the multivariate nature of the grain size composition, a redundancy analysis (RDA) was performed with polynomials of time as predictors of isometric logarithmic ratio transformed values by using the R package ‘composition’ 1.40.1 (Boogaart et al. 2014) and ‘vegan’ 2.4.4 (Oksanen et al. 2017). The first derivative of the smoothing splines (GAM), the polynomials (RDA) and the linearly interpolated global proxies informed on the change of the climate and environmental parameters per 1000 years.
+
+```{r setup, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo=TRUE, message=FALSE}
 # Load required packages
 library(palinsol)
 library(mgcv)
 library(itsadug)
+library(compositions)
+library(robCompositions)
+library(vegan)
 
 # Auxiliary functions
 source("AuxiliaryFunctions/finitDeriv.R")
@@ -107,7 +116,7 @@ write.table(WriteLR04[, c(1, 3)],
 
 Northern Hemisphere summer insolation at the latitude of Lake Ohrid (41° N)
 
-```{r}
+```{r, message=FALSE}
 data(BER78) 
 SplineT <- seq(0, MaxTime, length = 2000)
 Times <- -seq(-1, MaxTime + 1, length = 2000 + 2) * 1000
@@ -199,8 +208,7 @@ DecOaks2$Start <- c(TRUE, rep(FALSE, nrow(DecOaks2)-1))
 DecOaksBam1 <- bam(DecOak ~ s(Age, k = 500), data = DecOaks2)
 Rho <- acf(resid_gam(DecOaksBam1), plot = FALSE)$acf[2]
 DecOaksBam2 <- bam(DecOak ~ s(Age, k = 500), data = DecOaks2, 
-              rho = Rho, AR.start = DecOaks2$Start)
-NewData <- data.frame(Age = -seq(0, MaxTime, length = 2000)) 
+                   rho = Rho, AR.start = DecOaks2$Start)
 DecOaksPredict <- predict(DecOaksBam2, newdata = NewData, type = "response", se.fit = FALSE)
 
 # 1st derivative for change in covariate
@@ -227,21 +235,204 @@ write.table(WriteDecOaks[, c(1, 3)],
 
 Lake Ohrid δ18Olakewater based on calcite and siderite δ18O information
 
+```{r}
+Isotope <- read.table("Data/OxygenIsotope.txt", header = TRUE, sep = "\t")
+Isotope2 <- Isotope[nrow(Isotope):1, ]
+Isotope2$Age <- -Isotope2$Age
+# Mark beginn for temporal autocorrelation
+Isotope2$Start <- c(TRUE, rep(FALSE, nrow(Isotope2)-1))
+
+# Fit GAM
+IsotopeBam1 <- bam(Lakewater ~ s(Age, k = 500), data = Isotope2)
+Rho <- acf(resid_gam(IsotopeBam1), plot = FALSE)$acf[2]
+IsotopeBam2 <- bam(Lakewater ~ s(Age, k = 500), data = Isotope2, 
+                   rho = Rho, AR.start = Isotope2$Start)
+IsotopePredict <- predict(IsotopeBam2, newdata = NewData, type = "response", se.fit = FALSE)
+
+# 1st derivative for change in covariate
+IsotopeDeriv <- finitDeriv(Gam = IsotopeBam2, NewData, H = 0.001, Scale = FALSE)
+IsotopeDeriv <- abs(IsotopeDeriv)
+
+plotCovariate(-NewData$Age, IsotopePredict, LR04,
+              ylab = expression(paste(delta^{18}, "O"[lakewater], "(\u2030)")),
+              col = "blue", ylim = c(-10, -2), 
+              Raw = Isotope[, c("Age", "Lakewater")])
+
+# Write covariate for PyRateContinuous
+WriteIsotope <- data.frame(time = c(-NewData$Age, AddTime) / 100,
+                          Isotope = c(scale(IsotopePredict), rep(0, length(AddTime))),
+                          Isotopeabschange = c(scale(IsotopeDeriv[,2]), rep(0, length(AddTime))))
+write.table(WriteIsotope[, c(1, 2)], 
+            file = "Results/Covariates/Isotope.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(WriteIsotope[, c(1, 3)], 
+            file = "Results/Covariates/Isotopeabschange.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
 ### TIC
 
 Lake Ohrid total inorganic carbon (TIC) concentrations
+
+```{r}
+Tic <- read.table("Data/TIC.txt", header = TRUE, sep = "\t")
+Tic2 <- Tic[nrow(Tic):1, ]
+Tic2[, 1] <- -Tic2[, 1]
+# Mark beginn for temporal autocorrelation
+Tic2$Start <- c(TRUE, rep(FALSE, nrow(Tic2)-1))
+
+# Fit GAM
+TicBam1 <- bam(TIC ~ s(Age, k = 500), data = Tic2)
+Rho <- acf(resid_gam(TicBam1), plot = FALSE)$acf[2]
+TicBam2 <- bam(TIC ~ s(Age, k = 500), data = Tic2, 
+               rho = Rho, AR.start = Tic2$Start)
+TicPredict <- predict(TicBam2, newdata = NewData, type = "response", se.fit = FALSE)
+
+# 1st derivative for change in covariate
+TicDeriv <- finitDeriv(Gam = TicBam2, NewData, H = 0.001, Scale = FALSE)
+TicDeriv <- abs(TicDeriv)
+
+plotCovariate(-NewData$Age, TicPredict, LR04,
+              ylab = "TIC (%wt)",
+              col = "blue", ylim = c(0, 12), Raw = Tic)
+
+# Write covariate for PyRateContinuous
+WriteTic <- data.frame(time = c(-NewData$Age, AddTime) / 100,
+                          TIC = c(scale(TicPredict), rep(0, length(AddTime))),
+                          TICabschange = c(scale(TicDeriv[,2]), rep(0, length(AddTime))))
+write.table(WriteTic[, c(1, 2)], 
+            file = "Results/Covariates/TIC.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(WriteTic[, c(1, 3)], 
+            file = "Results/Covariates/TICabschange.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+```
 
 ### TOC
 
 Lake Ohrid total organic carbon (TOC) concentrations
 
-# Potassium
+```{r}
+Toc <- read.table("Data/TOC.txt", header = TRUE, sep = "\t")
+Toc2 <- Toc[nrow(Toc):1, ]
+Toc2[, 1] <- -Toc2[, 1]
+# Mark beginn for temporal autocorrelation
+Toc2$Start <- c(TRUE, rep(FALSE, nrow(Toc2)-1))
+
+# Fit GAM
+TocBam1 <- bam(TOC ~ s(Age, k = 500), data = Toc2)
+Rho <- acf(resid_gam(TocBam1), plot = FALSE)$acf[2]
+TocBam2 <- bam(TOC ~ s(Age, k = 500), data = Toc2, 
+               rho = Rho, AR.start = Toc2$Start)
+TocPredict <- predict(TocBam2, newdata = NewData, type = "response", se.fit = FALSE)
+
+# 1st derivative for change in covariate
+TocDeriv <- finitDeriv(Gam = TocBam2, NewData, H = 0.001, Scale = FALSE)
+TocDeriv <- abs(TocDeriv)
+
+plotCovariate(-NewData$Age, TocPredict, LR04,
+              ylab = "TOC (%wt)",
+              col = "blue", ylim = c(0, 4), Raw = Toc)
+
+# Write covariate for PyRateContinuous
+WriteToc <- data.frame(time = c(-NewData$Age, AddTime) / 100,
+                          TOC = c(scale(TocPredict), rep(0, length(AddTime))),
+                          TOCabschange = c(scale(TocDeriv[,2]), rep(0, length(AddTime))))
+write.table(WriteToc[, c(1, 2)], 
+            file = "Results/Covariates/TOC.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(WriteToc[, c(1, 3)], 
+            file = "Results/Covariates/TOCabschange.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+### Potassium
 
 Lake Ohrid potassium (K) counts from XRF scanning
+
+```{r}
+K <- read.table("Data/Potassium.txt", header = TRUE, sep = "\t")
+K2 <- K[nrow(K):1, ]
+K2$Age <- -K2$Age
+# Mark beginn for temporal autocorrelation
+K2$Start <- c(TRUE, rep(FALSE, nrow(K2)-1))
+# 11 point runing mean as in Wagner et al., 2019
+K$K11pt <- rep(NA, nrow(K2))
+K$K11pt[6:(nrow(K)-6)] <- sapply(6:(nrow(K)-6), function(x) mean(K[(x-5):(x+5), "K"]))
+K$K11pt <- K$K11pt / 1000
+
+KBam1 <- bam(K ~ s(Age, k = 500), data = K2, samfrac = 0.1) 
+Rho <- acf(resid_gam(KBam1), plot = FALSE)$acf[2]
+KBam2 <- bam(K ~ s(Age, k = 500), data = K2, samfrac = 0.1, 
+             rho = Rho, AR.start = K2$Start)
+KPredict <- predict.bam(KBam2, newdata = NewData, type = "response", se.fit = FALSE)
+KPredict <- KPredict / 1000 # Convert to kilocounts
+
+# 1st derivative for change in covariate
+KDeriv <- finitDeriv(Gam = KBam2, NewData, H = 0.001, Scale = FALSE)
+KDeriv <- abs(KDeriv)
+
+plotCovariate(-NewData$Age, KPredict, LR04,
+              ylab = expression(paste(K["11pt"], "(kcts)")),
+              col = "blue", ylim = c(10, 0), 
+              Raw = K[, c("Age", "K11pt")])
+
+# Write covariate for PyRateContinuous
+WriteK <- data.frame(time = c(-NewData$Age, AddTime) / 100,
+                          K = c(scale(KPredict), rep(0, length(AddTime))),
+                          Kabschange = c(scale(KDeriv[,2]), rep(0, length(AddTime))))
+write.table(WriteK[, c(1, 2)], 
+            file = "Results/Covariates/K.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(WriteK[, c(1, 3)], 
+            file = "Results/Covariates/Kabschange.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+rm("K", "K2", "KBam1", "KBam2") # Safe memory
+```
 
 ### Calcium
 
 Lake Ohrid calcium (Ca) counts from XRF scanning
+
+```{r}
+Ca <- read.table("Data/Calcium.txt", header = TRUE, sep = "\t")
+Ca2 <- Ca[nrow(Ca):1, ]
+Ca2$Age <- -Ca2$Age
+# MarCa beginn for temporal autocorrelation
+Ca2$Start <- c(TRUE, rep(FALSE, nrow(Ca2)-1))
+# 11 point runing mean as in Wagner et al., 2019
+Ca$Ca11pt <- rep(NA, nrow(Ca2))
+Ca$Ca11pt[6:(nrow(Ca)-6)] <- sapply(6:(nrow(Ca)-6), function(x) mean(Ca[(x-5):(x+5), "Ca"]))
+Ca$Ca11pt <- Ca$Ca11pt / 1000
+
+CaBam1 <- bam(Ca ~ s(Age, k = 500), data = Ca2, samfrac = 0.1) 
+Rho <- acf(resid_gam(CaBam1), plot = FALSE)$acf[2]
+CaBam2 <- bam(Ca ~ s(Age, k = 500), data = Ca2, samfrac = 0.1, 
+             rho = Rho, AR.start = Ca2$Start)
+CaPredict <- predict.bam(CaBam2, newdata = NewData, type = "response", se.fit = FALSE)
+CaPredict <- CaPredict / 1000 # Convert to Kilocounts
+
+# 1st derivative for change in covariate
+CaDeriv <- finitDeriv(Gam = CaBam2, NewData, H = 0.001, Scale = FALSE)
+CaDeriv <- abs(CaDeriv)
+
+plotCovariate(-NewData$Age, CaPredict, LR04,
+              ylab = expression(paste(Ca["11pt"], "(kcts)")),
+              col = "blue", ylim = c(0, 200), 
+              Raw = Ca[, c("Age", "Ca11pt")])
+
+# Write covariate for PyRateContinuous
+WriteCa <- data.frame(time = c(-NewData$Age, AddTime) / 100,
+                          Ca = c(scale(CaPredict), rep(0, length(AddTime))),
+                          Caabschange = c(scale(CaDeriv[,2]), rep(0, length(AddTime))))
+write.table(WriteCa[, c(1, 2)], 
+            file = "Results/Covariates/Ca.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(WriteCa[, c(1, 3)], 
+            file = "Results/Covariates/Caabschange.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+rm("Ca", "Ca2", "CaBam1", "CaBam2") # Safe memory
+```
 
 ### Quartz
 
@@ -258,8 +449,7 @@ Quartz2$Start <- c(TRUE, rep(FALSE, nrow(Quartz2)-1))
 QuartzBam1 <- bam(Quartz ~ s(Age, k = 500), data = Quartz2)
 Rho <- acf(resid_gam(QuartzBam1), plot = FALSE)$acf[2]
 QuartzBam2 <- bam(Quartz ~ s(Age, k = 500), data = Quartz2, 
-              rho = Rho, AR.start = Quartz2$Start)
-NewData <- data.frame(Age = -seq(0, MaxTime, length = 2000)) 
+                  rho = Rho, AR.start = Quartz2$Start)
 QuartzPredict <- predict(QuartzBam2, newdata = NewData, type = "response", se.fit = FALSE)
 
 # 1st derivative for change in covariate
@@ -268,7 +458,7 @@ QuartzDeriv <- abs(QuartzDeriv)
 
 plotCovariate(-NewData$Age, QuartzPredict, LR04,
               ylab = "Quartz (peak area)",
-              col = "red", ylim = c(0.4, 0), Raw = Quartz)
+              col = "blue", ylim = c(0.4, 0), Raw = Quartz)
 
 # Write covariate for PyRateContinuous
 WriteQuartz <- data.frame(time = c(-NewData$Age, AddTime) / 100,
@@ -286,9 +476,63 @@ write.table(WriteQuartz[, c(1, 3)],
 
 Lake Ohrid grain size information (summarized by ordination)
 
+```{r}
+Grainsize <- read.table("Data/Grainsize.txt", header = TRUE, sep = "\t")
+# Combine all types of sand into one category
+Grainsize$SAND <- Grainsize$VERY_COARSE_SAND + Grainsize$COARSE_SAND + Grainsize$MEDIUM_SAND + Grainsize$FINE_SAND + Grainsize$VERY_FINE_SAND
+GrainsizeRobPca <- pcaCoDa(Grainsize[,c("SAND","VERY_COARSE_SILT", "COARSE_SILT", "MEDIUM_SILT", 
+                                        "FINE_SILT", "VERY_FINE_SILT", "CLAY")]) 
+
+# Exclude all samples with very little sand
+GrainsizeRobPca <- GrainsizeRobPca$scores
+Grainsize2 <- Grainsize[-which(GrainsizeRobPca[, 1] < -1.5),] 
+GrainsizeRobPca <- pcaCoDa(Grainsize2[,c("SAND","VERY_COARSE_SILT", "COARSE_SILT", "MEDIUM_SILT", 
+                                         "FINE_SILT", "VERY_FINE_SILT", "CLAY")]) 
+# 1st axis explains 78% of the grainsize variance
+GrainsizeRobPca$princompOutputClr$sdev^2 / sum(GrainsizeRobPca$princompOutputClr$sdev^2) 
+GrainsizeRobPca <- GrainsizeRobPca$scores
+
+# Suggestion Gavin Simpson: RDA
+GrainsizeIlr <- ilr(Grainsize2[,c("SAND","VERY_COARSE_SILT", "COARSE_SILT", "MEDIUM_SILT", 
+                                  "FINE_SILT", "VERY_FINE_SILT", "CLAY")])
+# RDA with polynomials of time as predictors of 
+# isometric logarithmic ratio transformed grainsize values
+Poly <- poly(Grainsize2$Age, 25) 
+Poly2 <- as.data.frame(Poly) # Keep the poly class for the prediction
+colnames(Poly2) <- paste0("V", 1:ncol(Poly2)) # rda fails without colnames
+GrainsizeRda0 <- rda(GrainsizeIlr ~ 1, data = Poly2) # Model with intercept only
+GrainsizeRda1 <- rda(GrainsizeIlr ~ ., data = Poly2) 
+GrainsizeRdaSel <- ordiR2step(GrainsizeRda0, scope = formula(GrainsizeRda1), 
+                              direction = "forward", Pin = 0.05,
+                              R2permutations= 999, trace = FALSE)
+
+NewData <- predict(Poly, SplineT)
+NewData <- as.data.frame(NewData)
+colnames(NewData) <- colnames(Poly2)
+GrainsizePred <- -predict(GrainsizeRdaSel, newdata = NewData, type = "lc")[, 1]
+# Change in grainsize
+H <- 1/1000 # 1ka/1000
+NewData <- predict(Poly, SplineT + H)
+NewData <- as.data.frame(NewData)
+colnames(NewData) <- colnames(Poly2)
+PlusH <- -predict(GrainsizeRdaSel, newdata = NewData, type = "lc")[, 1]
+NewData <- predict(Poly, SplineT - H)
+NewData <- as.data.frame(NewData)
+colnames(NewData) <- colnames(Poly2)
+MinusH <- -predict(GrainsizeRdaSel, newdata = NewData, type = "lc")[, 1]
+GrainsizeDeriv <- (PlusH - MinusH) / 2*H
+
+plotCovariate(SplineT, scale(GrainsizePred), LR04,
+              ylab = "Grain size",
+              col = "blue", ylim = c(-2, 6), 
+              Raw = cbind(Grainsize2$Age, scale(GrainsizeRobPca[, 1])))
+```
+
+
 ### Plattform and resources
 
 ```{r}
+Sys.time()
 sessionInfo()
 ```
 
