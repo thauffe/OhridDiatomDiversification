@@ -1,0 +1,86 @@
+---
+title: "Wilke et al. immigration and (local) extinction dynamics of non-endemic diatoms"
+output: html_document
+---
+
+<br>
+
+Three hundred and eighty diatom samples were analysed from the DEEP sediment succession, taken every 128 cm (successive samples are around 2,000–4,000 years apart) between 0 and 406.96 m c.d. and every 64 cm (around 2,000 years) between 406.96 and 446.65 m c.d. The higher sampling frequency in the early phase of Lake Ohrid was chosen because this period was environmentally very dynamic (Wagner et al. 2017, Panagiotopoulos et al. 2020=. For comparison, we also analysed 123 samples from the phase before 1.36 Myr ago (446.65–583.92 m c.d.). 
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo=TRUE, message=FALSE}
+# Load required packages
+library(coda)
+library(foreach)
+library(doParallel)
+
+# Auxiliary functions
+source("PyRate/pyrate_utilities.r")
+```
+
+
+
+```{r}
+# Read data
+Diatoms <- read.table("Data/Supplementary material_Diatoms.csv", 
+                      sep = "\t", header = TRUE, check.names = FALSE,
+                      stringsAsFactors = FALSE)
+# Exclude the endemic species we haven't found
+Diatoms <- Diatoms[, -c(373:421)]
+# Data cleaning
+TaxonomyLifestyle <- Diatoms[1:12, -c(1:4)]
+Diatoms <- Diatoms[-c(1:12), - c(1:3, 5)]
+# Convert to numeric
+Diatoms <- as.data.frame( apply(Diatoms, 2, as.numeric) ) 
+# PyRate does not like special characters for species names:
+SpeciesChangeNames <- data.frame(Species = colnames(Diatoms)[-1], 
+                                 SpeciesPyRate = sprintf("SP_%03d", 1:(ncol(Diatoms)-1)),
+                                 stringsAsFactors = FALSE)
+colnames(Diatoms) <- c("Age", SpeciesChangeNames$SpeciesPyRate)
+TaxonomyLifestyle <- rbind(TaxonomyLifestyle, rep(NA, ncol(TaxonomyLifestyle)))
+TaxonomyLifestyle[13, ] <- c("PyRateCode", SpeciesChangeNames$SpeciesPyRate)
+```
+
+
+
+### Input for richness analysis of non-endemic species
+
+For the 202 non-endemic species that were found 1.36−0 Myr ago, we did not use a birth-death model because the taxa are likely to have originated elsewhere, thus making their first appearance in Lake Ohrid through dispersal, not speciation. Their richness through time was reconstructed by estimating per-lineage dispersal (d), local extinction (µ) and sampling (q) rates by a variant of the PyRateDES model for fossil biogeography Silvestro et al. 2016, assuming dispersal into Lake Ohrid from a source pool of constant size.
+
+We do not reconstruct 
+
+```{r}
+SpNonEndemic <- colnames(Diatoms)[-1][TaxonomyLifestyle[12, -1] == "Non-endemic"]
+WidespreadPresent <- colnames(Diatoms)[-1][TaxonomyLifestyle[11, -1] == "Extant" & 
+                                           TaxonomyLifestyle[12, -1] == "Non-endemic"] 
+DiaDes <- Diatoms[, c("Age", SpNonEndemic)]
+DiaDes <- rbind(rep(0, ncol (DiaDes)), DiaDes)
+DiaDes[1, colnames(DiaDes) %in% WidespreadPresent] <- 1 # Add extant species
+DiaDes <- DiaDes[which(DiaDes$Age < 1365), ]
+DiaDes <- DiaDes[, colSums(DiaDes) > 0] # Exclude species without counts
+TimeDes <- seq(0, max(DiaDes$Age)+0.1, length.out = 50)
+IntTimeDes <- findInterval(DiaDes$Age, TimeDes)
+IntervalIndex <- unique(IntTimeDes)
+BinnedDiaDes <- sapply(IntervalIndex, function(x) colSums(DiaDes[IntTimeDes == x, -1]))
+BinnedDiaDes <- BinnedDiaDes[, ncol(BinnedDiaDes):1]
+SpecimensBinnedDiaDes <- colSums(BinnedDiaDes)
+BinnedDiaDesAbun <- t( apply(BinnedDiaDes, 1, function(x) x/SpecimensBinnedDiaDes) )
+BinnedDiaDes <- ifelse(BinnedDiaDes == 0, 2, 3) # 2: Absent 3:Present in Lake Ohrid
+BinnedDiaDes <- data.frame(scientificName = rownames(BinnedDiaDes), BinnedDiaDes)
+colnames(BinnedDiaDes)[-1] <- rev(TimeDes)[-1] / 100
+write.table(BinnedDiaDes, file = "DES/DESin.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE, na = "NaN")
+```
+
+
+### Plattform and resources
+
+```{r}
+Sys.time()
+sessionInfo()
+```
+

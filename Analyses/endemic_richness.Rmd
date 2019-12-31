@@ -1,0 +1,248 @@
+---
+title: "Wilke et al. richness of endemic diatoms"
+output: html_document
+---
+
+<br>
+
+Three hundred and eighty diatom samples were analysed from the DEEP sediment succession, taken every 128 cm (successive samples are around 2,000–4,000 years apart) between 0 and 406.96 m c.d. and every 64 cm (around 2,000 years) between 406.96 and 446.65 m c.d. The higher sampling frequency in the early phase of Lake Ohrid was chosen because this period was environmentally very dynamic (Wagner et al. 2017, Panagiotopoulos et al. 2020=. For comparison, we also analysed 123 samples from the phase before 1.36 Myr ago (446.65–583.92 m c.d.). 
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo=TRUE, message=FALSE}
+# Load required packages
+library(coda)
+library(foreach)
+library(doParallel)
+
+# Auxiliary functions
+source("PyRate/pyrate_utilities.r")
+source("AuxiliaryFunctions/lttFromMcmcLog.R")
+```
+
+
+
+```{r}
+# Read data
+Diatoms <- read.table("Data/Supplementary material_Diatoms.csv", 
+                      sep = "\t", header = TRUE, check.names = FALSE,
+                      stringsAsFactors = FALSE)
+# Exclude the endemic species we haven't found
+Diatoms <- Diatoms[, -c(373:421)]
+# Data cleaning
+TaxonomyLifestyle <- Diatoms[1:12, -c(1:4)]
+Diatoms <- Diatoms[-c(1:12), - c(1:3, 5)]
+# Convert to numeric
+Diatoms <- as.data.frame( apply(Diatoms, 2, as.numeric) ) 
+# PyRate does not like special characters for species names:
+SpeciesChangeNames <- data.frame(Species = colnames(Diatoms)[-1], 
+                                 SpeciesPyRate = sprintf("SP_%03d", 1:(ncol(Diatoms)-1)),
+                                 stringsAsFactors = FALSE)
+colnames(Diatoms) <- c("Age", SpeciesChangeNames$SpeciesPyRate)
+TaxonomyLifestyle <- rbind(TaxonomyLifestyle, rep(NA, ncol(TaxonomyLifestyle)))
+TaxonomyLifestyle[13, ] <- c("PyRateCode", SpeciesChangeNames$SpeciesPyRate)
+
+# Endemic species
+SpEndemic <- colnames(Diatoms)[-1][TaxonomyLifestyle[12, -1] == "Endemic"]
+# Extinct endemic species
+SpEx <- colnames(Diatoms)[-1][TaxonomyLifestyle[11, -1] == "Extinct" & 
+                              TaxonomyLifestyle[12, -1] == "Endemic"] 
+
+```
+
+### Generate PyRate input
+
+As described previously (Pires et al. 2018), the BDS analyses were informed on the endemic species that originated in the basin before the formation of Lake Ohrid 1.36 Myr ago and lack a robust age-control. They therefore did not factor in as speciation events, but the respective 11 extinction events were considered, as they took place 1.36–0 Myr ago.
+
+```{r}
+SpeciationAfter136 <- rep(0, length(SpEndemic))
+ExtinctionAfter136 <- SpeciationAfter136
+Exclude <- SpeciationAfter136
+for(i in 1:length(SpEndemic)){
+  Tmp <- Diatoms[, c("Age", SpEndemic[i])]
+  Observation <- which(Tmp[, 2] > 0)
+  FirstObservation <- Tmp$Age[max(Observation)]
+  LastObservation <- Tmp$Age[min(Observation)]
+  # Speciation between 1.36-0 Myr ago
+  if(!is.na(FirstObservation)){
+    SpeciationAfter136[i] <- 1
+  }
+  # Extinction between 1.36-0 Myr ago
+  if(!is.na(LastObservation) & SpEndemic[i] %in% SpEx){
+    ExtinctionAfter136[i] <- 1
+  }
+  # First and last observation before 1.36 Myr; 
+  # no matter whether they are extant or extinct
+  # (Those species are not informative and do not contribute to the likelihood)
+  if(is.na(FirstObservation) & is.na(LastObservation)){
+    Exclude[i] <- 1
+  }
+}
+AliveBefore <- data.frame(taxon = SpEndemic, 
+                          speciation_in_bin = SpeciationAfter136, 
+                          extinction_in_bin = ExtinctionAfter136)
+AliveBefore <- AliveBefore[Exclude == 0, ]
+write.table(AliveBefore, "BDS/AliveBefore.txt",
+            sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+```
+
+We incorporated age uncertainties for the sediment succession (Wagner et al. 2019) in the inference of speciation and extinction times by generating 100 randomized inputs for the birth–death sampling (BDS) analyses with ages for the 380 diatom samples drawn from a uniform distribution of the mean age of the sample ± the age uncertainty of approximately 2,000 years.
+
+Due to computational limits we only generate 2 randomized inputs for this reproducible example.
+
+```{r}
+set.seed(23) # Reproducibility
+
+DiaTrim <- Diatoms[, c("Age", SpEndemic[Exclude == 0])]
+DiaTrim <- DiaTrim[-c(382:nrow(DiaTrim)), ]
+# How many occurrences?
+Rows <- sum(ifelse(DiaTrim[, -1] > 0, 1, 0) )
+Counter <- 0
+PyRateInput <- as.data.frame(matrix(NA, ncol = 5, nrow = Rows))
+colnames(PyRateInput) <- c("Species", "Status", "MinT", "MaxT", "Trait")
+PyRateInput$Trait <- 1
+for(y in 2:ncol(DiaTrim)){ # Loop through all columns with species
+  for(i in 1:nrow(DiaTrim)){ # Loop through all rows
+    if(DiaTrim[i, y] > 0){ # If the species is present
+      Counter <- Counter + 1
+      PyRateInput[Counter, 1] <- colnames(DiaTrim)[y] # Species name
+      PyRateInput[Counter, 3] <-  DiaTrim$Age[i] - 1.2 
+      PyRateInput[Counter, 4] <-  DiaTrim$Age[i] + 1.2
+    }
+  }
+}
+PyRateInput[, 2] <- "extant"
+PyRateInput[PyRateInput$Species %in% SpEx, 2] <- "extinct"
+# Rescale from 1400 kiloyears  to 13 Million years 
+# for improving numerical stability and reasonable prior in PyRate
+PyRateInput$MinT <- PyRateInput$MinT / 100
+PyRateInput$MaxT <- PyRateInput$MaxT / 100
+write.table(PyRateInput, 
+            file = paste0("BDS/TrimBounded.txt"), 
+            sep = "\t", row.names = FALSE) 
+extract.ages(file = paste0("BDS/TrimBounded.txt"), replicates = 2, outname = "")
+```
+
+The frequency of species’ occurrence in the current record may change over time due to ecosystem change altering the preservation potential or due to a more intensive screening during the early lake phase. Therefore, we defined three boundaries between four periods in which the mean sampling rate may differ according to major changes in δ18Olakewater and sampling intensity: 1.150, 0.866 and 0.455 Myr ago
+
+```{r}
+PresShifts <- data.frame(Age = c(11.5, 8.66, 4.55))
+write.table(PresShifts, 
+            file = paste0("BDS/PresShifts.txt"), 
+            sep = "\t", col.names = FALSE, row.names = FALSE) 
+```
+
+
+### Preservation models
+
+Comparing preservation models (Silvestro et al. 2019) using the corrected Akaike information criterion (AICc) suggested a significant better fit to the fossil data of the time‑variable Poisson process for fossil sampling than a sampling rate that is either constant (ΔAICc = 72.1) or dependent on the lifespan of a species (ΔAICc = 425.2).
+
+```{r}
+PresModelTest <- system(paste("python2 PyRate/PyRate.py",
+                              "BDS/TrimBounded.py",
+                              "-PPmodeltest",
+                              "-qShift BDS/PresShifts.txt"), 
+                        intern = TRUE)
+PresModelTest[grep("models", PresModelTest)]
+PresModelTest[grep("AICc scores", PresModelTest)]
+```
+
+
+### Speciation and extinction times
+
+We obtained posterior estimates of speciation and extinction times for each species using Markov Chain Monte Carlo (MCMC) sampling, which we ran for 5,000,000 iterations, sampling every 1,000 iterations and omitting the first 100,000 iterations as burn-in.
+
+Due to computational limits we ran less iterations for this reproducible example.
+
+```{r}
+# Define a call to python that we can run on several cores in parallel
+runPyRate <- function(i){
+     system( paste("python2 PyRate/PyRate.py",
+                 "BDS/TrimBounded.py",
+                  paste0("-j ", i),
+                  "-n 500001", # Iterations to run
+                  "-s 1000", # Sampling frequency
+                  "-b 100000", # Burn-in
+                  "-p 200000", # Print frequency
+                  "-mG",
+                  "-A 0", 
+                  "-mL 1",
+                  "-mM 1",
+                  "-trait_file BDS/AliveBefore.txt", # see Pires et al. 2018
+                  "-bound 13.66 0", 
+                  "-qShift BDS/PresShifts.txt", # Preservation shifts
+                  "-wd BDS")) 
+}
+# Run on 2 cores in parallel
+Ncores <- 2
+registerDoParallel(Ncores)
+PyRate <- foreach(iter = 1:2, .inorder = FALSE) %dopar% runPyRate(iter)
+stopImplicitCluster()
+```
+
+Check effective sampling sizes
+
+```{r}
+McmcLogFiles <- list.files("BDS/pyrate_mcmc_logs", pattern = "GBD1-1_mcmc.log")
+McmcLogs <- vector(mode = "list", length(McmcLogFiles)) 
+for(i in 1:length(McmcLogFiles)){
+  McmcLogs[[i]] <- read.table(paste0("BDS/pyrate_mcmc_logs/", McmcLogFiles[i]), 
+                              header = TRUE, sep = "\t")
+}
+lapply( McmcLogs, function(x) apply(x, 2, function(y) round(effectiveSize(as.mcmc(y)))))
+```
+
+### Endemic richness through time
+
+The accumulation of endemic species richness through time is the cumulative sum of all origination minus the cumulative sum of all extinction times in a single MCMC sample. 
+
+```{r, message = FALSE, warning = FALSE}
+ColTs <- range(which(grepl("TS", colnames(McmcLogs[[1]]))))
+ColTs <- ColTs[1]:ColTs[2]
+ColTe <- range(which(grepl("TE", colnames(McmcLogs[[1]]))))
+ColTe <- ColTe[1]:ColTe[2]
+Ltt <- vector(mode = "list", length(McmcLogFiles)) 
+for(i in 1:length(McmcLogs)){
+  Ltt[[i]] <- apply(McmcLogs[[i]], 1, function(x) lttFromMcmcLog(x, ColTs, ColTe))
+}
+Ltt <- do.call(cbind, Ltt)
+Keep <- apply(Ltt, 2, function(x) !all(is.na(x))) # Omit columns with all NAs
+Ltt <- Ltt[, Keep]
+```
+
+Endemic richness was averaged over all 100 BDS analyses and the uncertainty summarized by highest posterior density intervals with probabilities masses of 0.5−0.95 incremented by 0.05. 
+
+```{r}
+Prob <- seq(0.95, 0.05, by = -0.05)
+LttHpd <- vector(mode = "list", length(Prob)) 
+for(i in 1:length(Prob)){
+  LttHpd[[i]] <- apply(Ltt[-nrow(Ltt), ], 1, function(x) HPDinterval(coda:::mcmc(x), prob = Prob[i]))
+}
+MeanDiv <- rowMeans(Ltt[-nrow(Ltt), ])
+TimeSeq <- seq(0, 13.7, 0.05) / 10
+
+par(las = 1, mar = c(5.1, 4.5, 0.1, 0.8))
+plot(seq(0, 14, 2)/10, rep(1, 8), 
+     type = "n", xaxs = "i",
+     xlim = c(1.4, 0), ylim = c(50, 130), 
+     xlab = "Age (Myr ago)", ylab = "Endemic species richness (N)")
+for(i in 1:length(Prob)){
+  polygon(c(TimeSeq[-length(TimeSeq)], rev(TimeSeq[-length(TimeSeq)])), 
+          c(LttHpd[[i]][1, ], rev(LttHpd[[i]][2, ])), 
+          col = adjustcolor("green", alpha = 1/length(Prob)), border = NA)
+}
+lines(TimeSeq[-length(TimeSeq)], MeanDiv, col = "green")
+```
+
+
+
+### Plattform and resources
+
+```{r}
+Sys.time()
+sessionInfo()
+```
+
