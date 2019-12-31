@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
-```{r, echo=TRUE, message=FALSE}
+```{r, echo = TRUE, message = FALSE, warning = FALSE}
 # Load required packages
 library(palinsol)
 library(mgcv)
