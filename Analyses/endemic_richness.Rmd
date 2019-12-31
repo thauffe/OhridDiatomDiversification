@@ -5,14 +5,14 @@ output: html_document
 
 <br>
 
-Three hundred and eighty diatom samples were analysed from the DEEP sediment succession, taken every 128 cm (successive samples are around 2,000–4,000 years apart) between 0 and 406.96 m c.d. and every 64 cm (around 2,000 years) between 406.96 and 446.65 m c.d. The higher sampling frequency in the early phase of Lake Ohrid was chosen because this period was environmentally very dynamic (Wagner et al. 2017, Panagiotopoulos et al. 2020=. For comparison, we also analysed 123 samples from the phase before 1.36 Myr ago (446.65–583.92 m c.d.). 
+Three hundred and eighty diatom samples were analysed from the DEEP sediment succession, taken every 128 cm (successive samples are around 2,000–4,000 years apart) between 0 and 406.96 m c.d. and every 64 cm (around 2,000 years) between 406.96 and 446.65 m c.d. The higher sampling frequency in the early phase of Lake Ohrid was chosen because this period was environmentally very dynamic (Wagner et al. 2017, Panagiotopoulos et al. 2020). For comparison, we also analysed 123 samples from the phase before 1.36 Myr ago (446.65–583.92 m c.d.). 
 
 ```{r setup, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
-```{r, echo=TRUE, message=FALSE}
+```{r, echo = TRUE, message = FALSE, warning = FALSE}
 # Load required packages
 library(coda)
 library(foreach)
@@ -85,7 +85,7 @@ AliveBefore <- data.frame(taxon = SpEndemic,
                           speciation_in_bin = SpeciationAfter136, 
                           extinction_in_bin = ExtinctionAfter136)
 AliveBefore <- AliveBefore[Exclude == 0, ]
-write.table(AliveBefore, "BDS/AliveBefore.txt",
+write.table(AliveBefore, "Results/BDS/AliveBefore.txt",
             sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
 ```
 
@@ -121,9 +121,9 @@ PyRateInput[PyRateInput$Species %in% SpEx, 2] <- "extinct"
 PyRateInput$MinT <- PyRateInput$MinT / 100
 PyRateInput$MaxT <- PyRateInput$MaxT / 100
 write.table(PyRateInput, 
-            file = paste0("BDS/TrimBounded.txt"), 
+            file = paste0("Results/BDS/TrimBounded.txt"), 
             sep = "\t", row.names = FALSE) 
-extract.ages(file = paste0("BDS/TrimBounded.txt"), replicates = 2, outname = "")
+extract.ages(file = paste0("Results/BDS/TrimBounded.txt"), replicates = 2, outname = "")
 ```
 
 The frequency of species’ occurrence in the current record may change over time due to ecosystem change altering the preservation potential or due to a more intensive screening during the early lake phase. Therefore, we defined three boundaries between four periods in which the mean sampling rate may differ according to major changes in δ18Olakewater and sampling intensity: 1.150, 0.866 and 0.455 Myr ago
@@ -131,7 +131,7 @@ The frequency of species’ occurrence in the current record may change over tim
 ```{r}
 PresShifts <- data.frame(Age = c(11.5, 8.66, 4.55))
 write.table(PresShifts, 
-            file = paste0("BDS/PresShifts.txt"), 
+            file = paste0("Results/BDS/PresShifts.txt"), 
             sep = "\t", col.names = FALSE, row.names = FALSE) 
 ```
 
@@ -142,9 +142,9 @@ Comparing preservation models (Silvestro et al. 2019) using the corrected Akaike
 
 ```{r}
 PresModelTest <- system(paste("python2 PyRate/PyRate.py",
-                              "BDS/TrimBounded.py",
+                              "Results/BDS/TrimBounded.py",
                               "-PPmodeltest",
-                              "-qShift BDS/PresShifts.txt"), 
+                              "-qShift Results/BDS/PresShifts.txt"), 
                         intern = TRUE)
 PresModelTest[grep("models", PresModelTest)]
 PresModelTest[grep("AICc scores", PresModelTest)]
@@ -161,7 +161,7 @@ Due to computational limits we ran less iterations for this reproducible example
 # Define a call to python that we can run on several cores in parallel
 runPyRate <- function(i){
      system( paste("python2 PyRate/PyRate.py",
-                 "BDS/TrimBounded.py",
+                 "Results/BDS/TrimBounded.py",
                   paste0("-j ", i),
                   "-n 500001", # Iterations to run
                   "-s 1000", # Sampling frequency
@@ -171,10 +171,10 @@ runPyRate <- function(i){
                   "-A 0", 
                   "-mL 1",
                   "-mM 1",
-                  "-trait_file BDS/AliveBefore.txt", # see Pires et al. 2018
+                  "-trait_file Results/BDS/AliveBefore.txt", # see Pires et al. 2018
                   "-bound 13.66 0", 
-                  "-qShift BDS/PresShifts.txt", # Preservation shifts
-                  "-wd BDS")) 
+                  "-qShift Results/BDS/PresShifts.txt", # Preservation shifts
+                  "-wd Results/BDS")) 
 }
 # Run on 2 cores in parallel
 Ncores <- 2
@@ -186,10 +186,10 @@ stopImplicitCluster()
 Check effective sampling sizes
 
 ```{r}
-McmcLogFiles <- list.files("BDS/pyrate_mcmc_logs", pattern = "GBD1-1_mcmc.log")
+McmcLogFiles <- list.files("Results/BDS/pyrate_mcmc_logs", pattern = "GBD1-1_mcmc.log")
 McmcLogs <- vector(mode = "list", length(McmcLogFiles)) 
 for(i in 1:length(McmcLogFiles)){
-  McmcLogs[[i]] <- read.table(paste0("BDS/pyrate_mcmc_logs/", McmcLogFiles[i]), 
+  McmcLogs[[i]] <- read.table(paste0("Results/BDS/pyrate_mcmc_logs/", McmcLogFiles[i]), 
                               header = TRUE, sep = "\t")
 }
 lapply( McmcLogs, function(x) apply(x, 2, function(y) round(effectiveSize(as.mcmc(y)))))

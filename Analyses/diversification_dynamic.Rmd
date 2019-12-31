@@ -1,0 +1,46 @@
+---
+title: "Wilke et al. diversification rates and expected species longevity"
+output: html_document
+---
+
+<br>
+
+The influence of species richness and climate and environmental conditions on diversification rates may change over time, for instance, due to inherent uncaptured changes of the system affecting the dynamic of the species assemblage (Silvestro & Schnitzler 2018). Such confounding effects were incorporated by time‑stratifying the analysis of covariate influence on speciation and extinction rates. 
+We estimate the temporal heterogeneity of speciation and extinction rates in endemic species from three random samples of speciation and extinction times drawn from each of the 100 BDS analyses. We analysed the times of origination and extinction using a reversible jump (rj) MCMC (Silvestro et al. 2019) analysis. Marginal speciation and extinction rates were obtained from 2,000,000 rj-MCMC iterations with sampling every 2,500 iterations after discarding the first 50,000 iterations as burn-in. 
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo = TRUE, message = FALSE, warning = FALSE}
+# Load required packages
+library(coda)
+library(foreach)
+library(doParallel)
+
+# Auxiliary functions
+```
+
+
+Due to computational limits we only extract 2 random sets out of the speciation and extinction times inferred by each of the 2 [BDS analyses](https://thauffe.github.io/OhridDiatomDiversification/endemic_richness.html).
+```{r}
+# 
+set.seed(23) # Reproducibility
+BDS <- 1:2
+for(i in 1:length(BDS)){
+    McmcLogs[[i]] <- read.table(paste0("Results/BDS/pyrate_mcmc_logs/TrimBounded_",
+                                BDS[i], "_GBD1-1_mcmc.log"), 
+                                header = TRUE, sep = "\t")
+}
+
+```
+
+
+### Plattform and resources
+
+```{r}
+Sys.time()
+sessionInfo()
+```
+

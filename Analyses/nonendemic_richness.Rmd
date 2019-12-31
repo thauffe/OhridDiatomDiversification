@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
-```{r, echo=TRUE, message=FALSE}
+```{r, echo = TRUE, message = FALSE, warning = FALSE}
 # Load required packages
 library(coda)
 library(foreach)
@@ -72,7 +72,7 @@ BinnedDiaDesAbun <- t( apply(BinnedDiaDes, 1, function(x) x/SpecimensBinnedDiaDe
 BinnedDiaDes <- ifelse(BinnedDiaDes == 0, 2, 3) # 2: Absent 3:Present in Lake Ohrid
 BinnedDiaDes <- data.frame(scientificName = rownames(BinnedDiaDes), BinnedDiaDes)
 colnames(BinnedDiaDes)[-1] <- rev(TimeDes)[-1] / 100
-write.table(BinnedDiaDes, file = "DES/DESin.txt", 
+write.table(BinnedDiaDes, file = "Results/DES/DESin.txt", 
             sep = "\t", row.names = FALSE, quote = FALSE, na = "NaN")
 ```
 
