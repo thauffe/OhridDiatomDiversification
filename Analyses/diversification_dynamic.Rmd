@@ -1,12 +1,12 @@
 ---
-title: "Wilke et al. diversification rates and expected species longevity"
+title: "Wilke et al. diversification rates and ages of rate shifts"
 output: html_document
 ---
 
 <br>
 
 The influence of species richness and climate and environmental conditions on diversification rates may change over time, for instance, due to inherent uncaptured changes of the system affecting the dynamic of the species assemblage (Silvestro & Schnitzler 2018). Such confounding effects were incorporated by time‑stratifying the analysis of covariate influence on speciation and extinction rates. 
-We estimate the temporal heterogeneity of speciation and extinction rates in endemic species from three random samples of speciation and extinction times drawn from each of the 100 BDS analyses. We analysed the times of origination and extinction using a reversible jump (rj) MCMC (Silvestro et al. 2019) analysis. Marginal speciation and extinction rates were obtained from 2,000,000 rj-MCMC iterations with sampling every 2,500 iterations after discarding the first 50,000 iterations as burn-in. 
+We estimate the temporal heterogeneity of speciation and extinction rates in endemic species from three random samples of speciation and extinction times drawn from each of the 100 BDS analyses. 
 
 ```{r setup, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -20,19 +20,164 @@ library(foreach)
 library(doParallel)
 
 # Auxiliary functions
+source("AuxiliaryFunctions/extractAgesFromMcmcLog.R")
 ```
 
 
 Due to computational limits we only extract 2 random sets out of the speciation and extinction times inferred by each of the 2 [BDS analyses](https://thauffe.github.io/OhridDiatomDiversification/endemic_richness.html).
+
 ```{r}
 # 
 set.seed(23) # Reproducibility
-BDS <- 1:2
-for(i in 1:length(BDS)){
-    McmcLogs[[i]] <- read.table(paste0("Results/BDS/pyrate_mcmc_logs/TrimBounded_",
-                                BDS[i], "_GBD1-1_mcmc.log"), 
-                                header = TRUE, sep = "\t")
+BDS <- 1:2 # Number of BDS analyses
+RanSamp <- 2 # Random samples of speciation and extinction times
+for(i in BDS){
+    McmcLog <- read.table(paste0("Results/BDS/pyrate_mcmc_logs/TrimBounded_",
+                                 BDS[i], "_GBD1-1_mcmc.log"), 
+                          header = TRUE, sep = "\t")
+    extractAgesFromMcmcLog(McmcLog, N = RanSamp, 
+                           Out = paste0("Results/BD/Fix_", BDS[i], "_")) 
 }
+```
+
+
+We analysed the times of origination and extinction using a reversible jump (rj) MCMC (Silvestro et al. 2019) analysis. Marginal speciation and extinction rates were obtained from 2,000,000 rj-MCMC iterations with sampling every 2,500 iterations after discarding the first 50,000 iterations as burn-in. 
+
+```{r}
+runPyRateShift <- function(Fix, i){
+        system( paste("python2 PyRate/PyRate.py",
+                    paste0("-d Results/BD/", Fix[i], ".txt"),
+                    "-n 500001",  # Generations to run
+                    "-s 2500", # Sampling frequency 
+                    "-b 50000", # Burn-in
+                    "-p 500000", # Print frequency
+                    "-A 4", 
+                    "-edgeShift 13.65 0",
+                    "-log_marginal_rates 0",
+                    paste0("-wd Results/BD"))) 
+}
+
+
+Fix <- paste(paste0("Fix_", BDS), rep(1:RanSamp, each = length(BDS)), sep = "_")
+Fix <- sort(Fix)
+
+# Run on 2 cores in parallel
+Ncores <- 2
+registerDoParallel(Ncores)
+PyRate <- foreach(iter = 1:4, .inorder = FALSE) %dopar% runPyRateShift(Fix, iter)
+stopImplicitCluster()
+```
+
+Check effective sampling sizes
+
+```{r}
+McmcLogFiles <- list.files("Results/BD/pyrate_mcmc_logs", pattern = "rj_mcmc.log")
+McmcLogs <- vector(mode = "list", length(McmcLogFiles)) 
+for(i in 1:length(McmcLogFiles)){
+  McmcLogs[[i]] <- read.table(paste0("Results/BD/pyrate_mcmc_logs/", McmcLogFiles[i]), 
+                              header = TRUE, sep = "\t")
+}
+lapply( McmcLogs, function(x) apply(x, 2, function(y) round(effectiveSize(as.mcmc(y)))))
+```
+
+Summarize from the posterior distribution the number of shifts in speciation and extinction rates and their ages. 
+
+```{r}
+SpRj <- list.files("Results/BD/pyrate_mcmc_logs/", pattern = "sp_rates")
+ExRj <- list.files("Results/BD/pyrate_mcmc_logs/", pattern = "ex_rates")
+EdgeShift <- 13.65
+TimeSeq <- seq(EdgeShift, 0, by = -0.05) 
+SpTmp <- read.table(paste0("Results/BD/pyrate_mcmc_logs/", SpRj[1]), 
+                    sep = "\t", fill = NA, col.names = paste0("V", 1:20))
+Nrow <- nrow(SpTmp)
+ExThroughTime <- SpThroughTime <- matrix(NA_real_, 
+                                         ncol = length(TimeSeq), 
+                                         nrow = length(SpRj)*Nrow)
+ExShifts <- SpShifts <- matrix(NA_real_, ncol = 8, nrow = length(SpRj) * Nrow)
+Counter <- 1
+
+for(i in 1:length(SpRj)){
+  # Give a high number of col.names because each line may differ in length
+  SpTmp <- read.table(paste0("Results/BD/pyrate_mcmc_logs/", SpRj[i]), 
+                      sep = "\t", fill = NA, col.names = paste0("V", 1:20))
+  ExTmp <- read.table(paste0("Results/BD/pyrate_mcmc_logs/", ExRj[i]), 
+                      sep = "\t", fill = NA, col.names = paste0("V", 1:20))
+  for(y in 1:nrow(SpTmp)){
+    # Speciation
+    Sp1Tmp <- unlist( SpTmp[y, ] )
+    # Rarely there is a shift inferred earlier then 13.65
+    if (all(Sp1Tmp <= EdgeShift, na.rm = TRUE)){
+      # Which element is > 136 (i.e., the constrained edgeShift)
+      W136 <- which(Sp1Tmp >= EdgeShift)
+      ShiftTimesTmp <- na.omit(Sp1Tmp[W136:length(Sp1Tmp)])
+      # Get the rates for each time step:
+      SpThroughTime[Counter, ] <- approx(x = c(ShiftTimesTmp, 0), y = Sp1Tmp[1:(W136-1)], 
+                                         xout = TimeSeq, method = "constant")$y
+      SpShifts[Counter, 1:length(ShiftTimesTmp)] <- ShiftTimesTmp
+    }
+    # Extinction
+    Ex1Tmp <- unlist( ExTmp[y, ] )
+    if (all(Ex1Tmp <= EdgeShift, na.rm = TRUE)){
+      # Which element is > 136 (i.e., the constrained edgeShift)
+      W136 <- which(Ex1Tmp >= EdgeShift)
+      ShiftTimesTmp <- na.omit(Ex1Tmp[W136:length(Ex1Tmp)])
+      # Get the rates for each time step:
+      ExThroughTime[Counter, ] <- approx(x = c(ShiftTimesTmp, 0), y = Ex1Tmp[1:(W136-1)], 
+                                         xout = TimeSeq, method = "constant")$y
+      ExShifts[Counter, 1:length(ShiftTimesTmp)] <- ShiftTimesTmp
+    }
+    Counter <- Counter + 1
+  }
+}
+
+# Omit the fixed edge shift of 13.65 million years
+SpThroughTime <- SpThroughTime[, -1]
+ExThroughTime <- ExThroughTime[, -1]
+SpShifts <- SpShifts[, -1]
+ExShifts <- ExShifts[, -1]
+# Omit all rows with occasional NAs 
+Keep <- 1:(Counter-1) # Easier
+SpThroughTime <- SpThroughTime[Keep, ]
+ExThroughTime <- ExThroughTime[Keep, ]
+SpShifts <- SpShifts[Keep, ]
+ExShifts <- ExShifts[Keep, ]
+# Rescale rates from 13.6 million years to 1.36
+SpThroughTime <- SpThroughTime * 10
+ExThroughTime <- ExThroughTime * 10
+NetDivThroughTime <- SpThroughTime - ExThroughTime
+SpShifts <- SpShifts / 10
+ExShifts <- ExShifts / 10
+
+# Fequency of shifts found across all birth-death analyses
+PerSpShift <- apply(SpShifts, 2, function(x) sum(!is.na(x)) / length(x))
+PerExShift <- apply(ExShifts, 2, function(x) sum(!is.na(x)) / length(x))
+# 
+MedSpShift <- apply(SpShifts, 2, median, na.rm = TRUE) 
+MedExShift <- apply(ExShifts, 2, median, na.rm = TRUE) 
+
+ExShiftsHpd <- SpShiftsHpd <- matrix(NA_real_, nrow = 2, ncol = ncol(SpShifts))
+for(i in 1:ncol(SpShifts)){
+  TmpShift <- na.omit(SpShifts[, i])
+  if(length(TmpShift) > 1){
+    SpShiftsHpd[, i] <- HPDinterval(coda:::mcmc(TmpShift))
+  }
+  TmpShift <- na.omit(ExShifts[, i])
+  if(length(TmpShift) > 1){
+    ExShiftsHpd[, i] <- HPDinterval(coda:::mcmc(TmpShift))
+  }
+}
+
+SummarySpShift <- rbind(PerSpShift, MedSpShift, SpShiftsHpd) 
+SummarySpShift <- SummarySpShift[, SummarySpShift[1, ] != 0] 
+rownames(SummarySpShift) <- c("Frequency", "Age", "LwrHPD", "UprHPD")
+colnames(SummarySpShift) <- paste("Shift", 1:ncol(SummarySpShift))
+SummarySpShift
+
+SummaryExShift <- rbind(PerExShift, MedExShift, ExShiftsHpd) 
+SummaryExShift <- SummaryExShift[, SummaryExShift[1, ] != 0] 
+rownames(SummaryExShift) <- c("Frequency", "Age", "LwrHPD", "UprHPD")
+colnames(SummaryExShift) <- paste("Shift", 1:ncol(SummaryExShift))
+SummaryExShift
 
 ```
 
