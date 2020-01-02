@@ -27,5 +27,5 @@ Python version: 2.7.12 (default, Oct  8 2019, 14:14:10)
 Numpy version: 1.11.0
 Scipy version: 0.17.0
 
-Random seed: 2655 
+Random seed: 646 
 Using module FastPyRateC

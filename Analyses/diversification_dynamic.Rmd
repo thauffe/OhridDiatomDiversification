@@ -178,7 +178,56 @@ SummaryExShift <- SummaryExShift[, SummaryExShift[1, ] != 0]
 rownames(SummaryExShift) <- c("Frequency", "Age", "LwrHPD", "UprHPD")
 colnames(SummaryExShift) <- paste("Shift", 1:ncol(SummaryExShift))
 SummaryExShift
+```
 
+Plot speciation and extinction rates (including shifts) through time. 
+
+```{r}
+Prob <- seq(0.95, 0.05, by = -0.05)
+NetDivThroughTimeHPD <- ExThroughTimeHPD <- SpThroughTimeHPD <- vector(mode = "list", length(Prob)) 
+for(i in 1:length(Prob)){
+  SpThroughTimeHPD[[i]] <- apply(SpThroughTime, 2,
+                                 function(x) HPDinterval(coda:::mcmc(x), prob = Prob[i]))
+  ExThroughTimeHPD[[i]] <- apply(ExThroughTime, 2,
+                                 function(x) HPDinterval(coda:::mcmc(x), prob = Prob[i]))
+  NetDivThroughTimeHPD[[i]] <- apply(NetDivThroughTime, 2,
+                                     function(x) HPDinterval(coda:::mcmc(x), prob = Prob[i]))
+}
+# Means
+SpThroughTimeMean <- apply(SpThroughTime, 2, median)
+ExThroughTimeMean <- apply(ExThroughTime, 2, median)
+
+TimeSeq <- TimeSeq[-1]
+
+par(las = 1, mar = c(5.1, 4.5, 0.1, 0.8))
+plot(1, 1, type = "n", 
+     xlim = c(14, 0), ylim = c(0, max(unlist(SpThroughTimeHPD))), 
+     xaxs = "i", xaxt = "n", 
+     xlab = "Age (Myr ago)", 
+     ylab = expression(paste("Speciation rate (events lineage ", Myr^{-1}, ")")))
+axis(side = 1, at = seq(14, 0, by = -2), labels = seq(14, 0, by = -2)/10)
+abline(v = SummarySpShift[2, SummarySpShift[1, ] > 0.75]*10, lty = 2, col = "dodgerblue")
+for(i in 1:length(Prob)){
+  polygon(c(TimeSeq, rev(TimeSeq)), 
+          c(SpThroughTimeHPD[[i]][1, ], rev(SpThroughTimeHPD[[i]][2, ])), 
+          col = adjustcolor("dodgerblue", alpha = 1/length(Prob)), border = NA)
+}
+lines(TimeSeq, SpThroughTimeMean, col = "dodgerblue")
+
+par(las = 1, mar = c(5.1, 4.5, 0.1, 0.8))
+plot(1, 1, type = "n", 
+     xlim = c(14, 0), ylim = c(0, max(unlist(ExThroughTimeHPD))), 
+     xaxs = "i", xaxt = "n", 
+     xlab = "Age (Myr ago)", 
+     ylab = expression(paste("Extinction rate (events lineage ", Myr^{-1}, ")")))
+axis(side = 1, at = seq(14, 0, by = -2), labels = seq(14, 0, by = -2)/10)
+abline(v = SummaryExShift[2, SummaryExShift[1, ] > 0.75]*10, lty = 2, col = "red")
+for(i in 1:length(Prob)){
+  polygon(c(TimeSeq, rev(TimeSeq)), 
+          c(ExThroughTimeHPD[[i]][1, ], rev(ExThroughTimeHPD[[i]][2, ])), 
+          col = adjustcolor("red", alpha = 1/length(Prob)), border = NA)
+}
+lines(TimeSeq, ExThroughTimeMean, col = "red")
 ```
 
 
