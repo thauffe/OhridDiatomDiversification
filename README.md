@@ -5,4 +5,6 @@ Analyses of Wilke et al. on diatom diversification in Lake Ohrid
 
 [endemic richness](https://thauffe.github.io/OhridDiatomDiversification/endemic_richness.html)
 
+[non-endemic richness](https://thauffe.github.io/OhridDiatomDiversification/nonendemic_richness.html)
+
 [diversification periods](https://thauffe.github.io/OhridDiatomDiversification/diversification_dynamic.html)

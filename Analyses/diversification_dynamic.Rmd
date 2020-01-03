@@ -204,7 +204,7 @@ plot(1, 1, type = "n",
      xlim = c(14, 0), ylim = c(0, max(unlist(SpThroughTimeHPD))), 
      xaxs = "i", xaxt = "n", 
      xlab = "Age (Myr ago)", 
-     ylab = expression(paste("Speciation rate (events lineage ", Myr^{-1}, ")")))
+     ylab = expression(paste("Speciation rate (events ", lineage^{-1}, Myr^{-1}, ")")))
 axis(side = 1, at = seq(14, 0, by = -2), labels = seq(14, 0, by = -2)/10)
 abline(v = SummarySpShift[2, SummarySpShift[1, ] > 0.75]*10, lty = 2, col = "dodgerblue")
 for(i in 1:length(Prob)){
@@ -219,7 +219,7 @@ plot(1, 1, type = "n",
      xlim = c(14, 0), ylim = c(0, max(unlist(ExThroughTimeHPD))), 
      xaxs = "i", xaxt = "n", 
      xlab = "Age (Myr ago)", 
-     ylab = expression(paste("Extinction rate (events lineage ", Myr^{-1}, ")")))
+     ylab = expression(paste("Extinction rate (events ", lineage^{-1}, Myr^{-1}, ")")))
 axis(side = 1, at = seq(14, 0, by = -2), labels = seq(14, 0, by = -2)/10)
 abline(v = SummaryExShift[2, SummaryExShift[1, ] > 0.75]*10, lty = 2, col = "red")
 for(i in 1:length(Prob)){

@@ -5,26 +5,27 @@ output: html_document
 
 <br>
 
-Three hundred and eighty diatom samples were analysed from the DEEP sediment succession, taken every 128 cm (successive samples are around 2,000–4,000 years apart) between 0 and 406.96 m c.d. and every 64 cm (around 2,000 years) between 406.96 and 446.65 m c.d. The higher sampling frequency in the early phase of Lake Ohrid was chosen because this period was environmentally very dynamic (Wagner et al. 2017, Panagiotopoulos et al. 2020=. For comparison, we also analysed 123 samples from the phase before 1.36 Myr ago (446.65–583.92 m c.d.). 
+Three hundred and eighty diatom samples were analysed from the DEEP sediment succession, taken every 128 cm (successive samples are around 2,000–4,000 years apart) between 0 and 406.96 m c.d. and every 64 cm (around 2,000 years) between 406.96 and 446.65 m c.d. The higher sampling frequency in the early phase of Lake Ohrid was chosen because this period was environmentally very dynamic ([Wagner et al. 2017](http://www.biogeosciences.net/14/2033/2017/), [Panagiotopoulos et al. 2020](http://www.sciencedirect.com/science/article/pii/S0277379119307127)). For comparison, we also analysed 123 samples from the phase before 1.36 Myr ago (446.65–583.92 m c.d.). 
 
 ```{r setup, include=FALSE, message=FALSE}
+library(knitr)
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache=TRUE, autodep = TRUE)
+knitr::dep_auto()
 ```
 
 
-```{r, echo = TRUE, message = FALSE, warning = FALSE}
+```{r libraries, echo = TRUE, message = FALSE, warning = FALSE}
 # Load required packages
 library(coda)
-library(foreach)
-library(doParallel)
-
-# Auxiliary functions
-source("PyRate/pyrate_utilities.r")
+library(simDES)
 ```
 
+### Input for richness analysis of non-endemic species
 
+First part of processing the supplementary data is the same than for the endemic diatoms
 
-```{r}
+```{r data_processing, cache = TRUE}
 # Read data
 Diatoms <- read.table("Data/Supplementary material_Diatoms.csv", 
                       sep = "\t", header = TRUE, check.names = FALSE,
@@ -45,15 +46,9 @@ TaxonomyLifestyle <- rbind(TaxonomyLifestyle, rep(NA, ncol(TaxonomyLifestyle)))
 TaxonomyLifestyle[13, ] <- c("PyRateCode", SpeciesChangeNames$SpeciesPyRate)
 ```
 
+For the 202 non-endemic species that were found 1.36−0 Myr ago, we did not use a birth-death model because the taxa are likely to have originated elsewhere, thus making their first appearance in Lake Ohrid through dispersal, not speciation. Using taxa occurrences binned into intervals of 0.3 Myr, their richness through time was reconstructed by estimating per-lineage dispersal (d), local extinction (µ) and sampling (q) rates by a variant of the PyRateDES model for fossil biogeography ([Silvestro et al. 2016](http://rstb.royalsocietypublishing.org/content/371/1691/20150225)), assuming dispersal into Lake Ohrid from a source pool of constant size.
 
-
-### Input for richness analysis of non-endemic species
-
-For the 202 non-endemic species that were found 1.36−0 Myr ago, we did not use a birth-death model because the taxa are likely to have originated elsewhere, thus making their first appearance in Lake Ohrid through dispersal, not speciation. Their richness through time was reconstructed by estimating per-lineage dispersal (d), local extinction (µ) and sampling (q) rates by a variant of the PyRateDES model for fossil biogeography Silvestro et al. 2016, assuming dispersal into Lake Ohrid from a source pool of constant size.
-
-We do not reconstruct 
-
-```{r}
+```{r write_desin, cache = TRUE, dependson=knitr::all_labels()}
 SpNonEndemic <- colnames(Diatoms)[-1][TaxonomyLifestyle[12, -1] == "Non-endemic"]
 WidespreadPresent <- colnames(Diatoms)[-1][TaxonomyLifestyle[11, -1] == "Extant" & 
                                            TaxonomyLifestyle[12, -1] == "Non-endemic"] 
@@ -74,6 +69,120 @@ BinnedDiaDes <- data.frame(scientificName = rownames(BinnedDiaDes), BinnedDiaDes
 colnames(BinnedDiaDes)[-1] <- rev(TimeDes)[-1] / 100
 write.table(BinnedDiaDes, file = "Results/DES/DESin.txt", 
             sep = "\t", row.names = FALSE, quote = FALSE, na = "NaN")
+```
+
+We extended the PyRateDES implementation by adding a Gamma distributed heterogeneity in sampling (mirroring the model we used in the BDS analyses), continuous time-variable dispersal and local extinction rates, and parameter estimation via maximum likelihood (available on [https://github.com/dsilvestro/PyRate](https://github.com/dsilvestro/PyRate)). The same shifts in sampling rate as for the endemic species and an exponential relationship of dispersal and extinction rates with time were specified.
+
+```{r des_ml, cache = TRUE, dependson=knitr::all_labels()}
+Time <- data.frame(Time = seq(13.7, 0, length.out = 138),
+                   Cov = seq(0, 1, length.out = 138))
+write.table(Time, "Results/DES/Time.txt",
+            sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+# Maximize likelihood
+system(paste0("python2 PyRate/PyRateDES2.py",
+              " -d Results/DES/DESin.txt",
+              " -mG ", # Preservation heterogeneity
+              " -qtimes 11.5 8.66 4.55", # Shifts in sampling rate
+              " -data_in_area 1", # Observations only in Ohrid
+              " -varD Results/DES/Time.txt", # Time-variable dispersal
+              " -varE Results/DES/Time.txt", # Time-variable (local) extinction
+              " -A 3")) # Maximum likelihood
+DesResult <- read.table("Results/DES/DESin_0_q_4.55_8.66_11.5_Dexp_Eexp_G_Mlsbplx.log",
+                        header = TRUE, sep = "\t")
+DesResult[, c("likelihood", "d21_t0", "e1_t0", "cov_d21", "cov_e1")]
+```
+
+Using the Maximum likelihood estimates as start parameters for a Bayesian inference informed on the uncertainty in dispersal, local extinction and sampling rates after sampling every 100th of 50,000 MCMC iterations and omitting the first 1,000 iterations as burn-in.
+
+Due to computational limits we will run less iterations for this reproducible example.
+
+```{r des_bi, cache = TRUE, dependson=knitr::all_labels()}
+system(paste0("python2 PyRate/PyRateDES2.py",
+              " -d Results/DES/DESin.txt",
+              " -mG ", # Preservation heterogeneity
+              " -qtimes 11.5 8.66 4.55", # Shifts in sampling rate
+              " -data_in_area 1", # Observations only in Ohrid
+              " -varD Results/DES/Time.txt", # Time-variable dispersal
+              " -varE Results/DES/Time.txt", # Time-variable (local) extinction
+              " -n 2501 -s 100 -p 1000"))
+
+Cov <- Time
+Cov[, 2] <- Cov[, 2] - mean(Cov[, 2])
+
+DesBi <- read.table("Results/DES/DESin_0_q_4.55_8.66_11.5_Dexp_Eexp_G.log",
+                    header = TRUE, sep = "\t")
+DesBi <- DesBi[DesBi$it >= 500, ] # Burn-in
+DisThroughTimeBi <- apply(DesBi[, c("d21_t0", "cov_d21")], 1, function(x) x[1] * exp(x[2] * Cov$Cov))
+DisThroughTimeBi <- 10 * DisThroughTimeBi
+ExThroughTimeBi <- apply(DesBi[, c("e1_t0", "cov_e1")], 1, function(x) x[1] * exp(x[2] * Cov$Cov))
+ExThroughTimeBi <- 10 * ExThroughTimeBi
+Prob <- seq(0.95, 0.05, by = -0.05)
+ExThroughTimeHpd <- DisThroughTimeHpd <- vector(mode = "list", length(Prob)) 
+for(i in 1:length(Prob)){
+  DisThroughTimeHpd[[i]] <- apply(DisThroughTimeBi, 1, 
+                                  function(x) HPDinterval(coda:::mcmc(x), prob = Prob[i]))
+  ExThroughTimeHpd[[i]] <- apply(ExThroughTimeBi, 1, 
+                                 function(x) HPDinterval(coda:::mcmc(x), prob = Prob[i]))
+} 
+
+par(las = 1, mar = c(5.1, 4.5, 0.1, 0.8))
+plot(1, 1, type = "n",
+     xlim = c(14, 0), ylim = c(0, 12), xaxs = "i", xaxt = "n",
+     ylab = expression(paste("Rate (events ", lineage^{-1}, " ", Myr^{-1}, ")")), 
+     xlab = "Age (Myr ago)")
+axis(side = 1, at = seq(14, 0, by = -2), labels = seq(1.4, 0, by = -0.2))
+for(i in 1:length(DisThroughTimeHpd)){
+  polygon(c(Time$Time, rev(Time$Time)), 
+          c(DisThroughTimeHpd[[i]][1, ], rev(DisThroughTimeHpd[[i]][2, ])), 
+          col = adjustcolor("dodgerblue", alpha = 1/length(Prob)), border = NA)
+}
+for(i in 1:length(DisThroughTimeHpd)){
+  polygon(c(Time$Time, rev(Time$Time)), 
+          c(ExThroughTimeHpd[[i]][1, ], rev(ExThroughTimeHpd[[i]][2, ])), 
+          col = adjustcolor("red", alpha = 1/length(Prob)), border = NA)
+}
+lines(Time$Time, apply(DisThroughTimeBi, 1, median), col = "dodgerblue", lwd = 2)
+lines(Time$Time, apply(ExThroughTimeBi, 1, median), col = "red", lwd = 2)
+legend("topright", lty = c(1,1), col = c("dodgerblue", "red"), 
+       legend = c("immigration", "(local) extinction"), bty = "n")
+```
+
+
+We then inferred the average non-endemic richness through time by running 1,000 stochastic diversity simulations based on the estimated dispersal, local extinction and sampling parameters, using the R package ‘simDES’ 0.1 ([Hauffe 2019](https://github.com/thauffe/simDES)).
+
+Due to computational limits we will only perform 100 stochastic diversity simulations here. 
+
+```{r des_boot, cache = TRUE, dependson=knitr::all_labels()}
+Boot <- boot_DES(100, Time = 13.7, Step = 0.1, BinSize = 0.5, Nspecies = 202,
+                 # ML parameters
+                 SimD = c(0, DesResult$d21_t0), 
+                 SimE = c(DesResult$e1_t0, 0), 
+                 SimQ = c(1, 1),
+                 VarD = c(0, DesResult$cov_d21), 
+                 VarE = c(DesResult$cov_e1, 0), 
+                 Covariate = Time,
+                 # First time-bin with almost perfect preservation
+                 # and thus we start with the observed richness of 91 species
+                 Observation = data.frame(time = rep(13.7, 202),
+                                          area = c(rep(2, 111), rep(3, 91))),
+                 DataInArea = 1, 
+                 ConfInt = seq(0.95, 0.5, by = -0.05),
+                 Ncores = 2)
+
+par(las = 1, mar = c(5.1, 4.5, 0.1, 0.8))
+plot(1, 1, type = "n",
+     xlim = c(1.4, 0), ylim = c(50, 200), xaxs = "i",
+     ylab = "Non-endemic species richness (N)", 
+     xlab = "Age (Myr ago)")
+LenCi <- length(Boot[[3]])
+TimeSim <- as.numeric(rownames(Boot[[2]])) / 10
+for (i in 1:LenCi) {
+  polygon(c(TimeSim, rev(TimeSim)),
+          c(Boot[[3]][[i]][[3]][, 1], rev(Boot[[3]][[i]][[3]][, 2])),
+          col = adjustcolor("magenta", alpha = 0.5/LenCi),
+          border = NA)
+}
+lines(TimeSim, Boot[[2]][, 3], col = "magenta")
 ```
 
 
