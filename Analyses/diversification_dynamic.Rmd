@@ -5,15 +5,18 @@ output: html_document
 
 <br>
 
-The influence of species richness and climate and environmental conditions on diversification rates may change over time, for instance, due to inherent uncaptured changes of the system affecting the dynamic of the species assemblage (Silvestro & Schnitzler 2018). Such confounding effects were incorporated by time‑stratifying the analysis of covariate influence on speciation and extinction rates. 
+The influence of species richness and climate and environmental conditions on diversification rates may change over time, for instance, due to inherent uncaptured changes of the system affecting the dynamic of the species assemblage ([Silvestro & Schnitzler 2018](https://books.google.es/books?hl=en&lr=&id=GWxODwAAQBAJ&oi=fnd&pg=PA217&dq=info:dgN-N3FJYWcJ:scholar.google.com&ots=tasNt4b38I&sig=BZpHdpXYjm6kYo4B7nhFfbeSvJY&redir_esc=y#v=onepage&q&f=false)). Such confounding effects were incorporated by time‑stratifying the analysis of covariate influence on speciation and extinction rates. 
 We estimate the temporal heterogeneity of speciation and extinction rates in endemic species from three random samples of speciation and extinction times drawn from each of the 100 BDS analyses. 
 
 ```{r setup, include=FALSE, message=FALSE}
+library(knitr)
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache=TRUE, autodep = TRUE)
+knitr::dep_auto()
 ```
 
 
-```{r, echo = TRUE, message = FALSE, warning = FALSE}
+```{r libraries, echo = TRUE, message = FALSE, warning = FALSE}
 # Load required packages
 library(coda)
 library(foreach)
@@ -24,9 +27,9 @@ source("AuxiliaryFunctions/extractAgesFromMcmcLog.R")
 ```
 
 
-Due to computational limits we only extract 2 random sets out of the speciation and extinction times inferred by each of the 2 [BDS analyses](https://thauffe.github.io/OhridDiatomDiversification/endemic_richness.html).
+Due to computational limits we will only extract 2 random sets out of the speciation and extinction times inferred by each of the 2 [BDS analyses](https://thauffe.github.io/OhridDiatomDiversification/endemic_richness.html).
 
-```{r}
+```{r extract_ages, dependson=knitr::all_labels()}
 # 
 set.seed(23) # Reproducibility
 BDS <- 1:2 # Number of BDS analyses
@@ -41,9 +44,9 @@ for(i in BDS){
 ```
 
 
-We analysed the times of origination and extinction using a reversible jump (rj) MCMC (Silvestro et al. 2019) analysis. Marginal speciation and extinction rates were obtained from 2,000,000 rj-MCMC iterations with sampling every 2,500 iterations after discarding the first 50,000 iterations as burn-in. 
+We analysed the times of origination and extinction using a reversible jump (rj) MCMC ([Silvestro et al. 2019](https://www.cambridge.org/core/journals/paleobiology/article/improved-estimation-of-macroevolutionary-rates-from-fossil-data-using-a-bayesian-framework/334F08A74A6C92F1FEAD91A71FE59A1C)) analysis. Marginal speciation and extinction rates were obtained from 2,000,000 rj-MCMC iterations with sampling every 2,500 iterations after discarding the first 50,000 iterations as burn-in. 
 
-```{r}
+```{r bd, dependson=knitr::all_labels()}
 runPyRateShift <- function(Fix, i){
         system( paste("python2 PyRate/PyRate.py",
                     paste0("-d Results/BD/", Fix[i], ".txt"),
@@ -70,7 +73,7 @@ stopImplicitCluster()
 
 Check effective sampling sizes
 
-```{r}
+```{r ess, dependson=knitr::all_labels()}
 McmcLogFiles <- list.files("Results/BD/pyrate_mcmc_logs", pattern = "rj_mcmc.log")
 McmcLogs <- vector(mode = "list", length(McmcLogFiles)) 
 for(i in 1:length(McmcLogFiles)){
@@ -82,7 +85,7 @@ lapply( McmcLogs, function(x) apply(x, 2, function(y) round(effectiveSize(as.mcm
 
 Summarize from the posterior distribution the number of shifts in speciation and extinction rates and their ages. 
 
-```{r}
+```{r age_shifts, dependson=knitr::all_labels()}
 SpRj <- list.files("Results/BD/pyrate_mcmc_logs/", pattern = "sp_rates")
 ExRj <- list.files("Results/BD/pyrate_mcmc_logs/", pattern = "ex_rates")
 EdgeShift <- 13.65
@@ -182,7 +185,7 @@ SummaryExShift
 
 Plot speciation and extinction rates (including shifts) through time. 
 
-```{r}
+```{r plot_shifts, dependson=knitr::all_labels()}
 Prob <- seq(0.95, 0.05, by = -0.05)
 NetDivThroughTimeHPD <- ExThroughTimeHPD <- SpThroughTimeHPD <- vector(mode = "list", length(Prob)) 
 for(i in 1:length(Prob)){
@@ -204,7 +207,7 @@ plot(1, 1, type = "n",
      xlim = c(14, 0), ylim = c(0, max(unlist(SpThroughTimeHPD))), 
      xaxs = "i", xaxt = "n", 
      xlab = "Age (Myr ago)", 
-     ylab = expression(paste("Speciation rate (events ", lineage^{-1}, Myr^{-1}, ")")))
+     ylab = expression(paste("Speciation rate (events ", lineage^{-1}, " ", Myr^{-1}, ")")))
 axis(side = 1, at = seq(14, 0, by = -2), labels = seq(14, 0, by = -2)/10)
 abline(v = SummarySpShift[2, SummarySpShift[1, ] > 0.75]*10, lty = 2, col = "dodgerblue")
 for(i in 1:length(Prob)){
@@ -219,7 +222,7 @@ plot(1, 1, type = "n",
      xlim = c(14, 0), ylim = c(0, max(unlist(ExThroughTimeHPD))), 
      xaxs = "i", xaxt = "n", 
      xlab = "Age (Myr ago)", 
-     ylab = expression(paste("Extinction rate (events ", lineage^{-1}, Myr^{-1}, ")")))
+     ylab = expression(paste("Extinction rate (events ", lineage^{-1}, " ", Myr^{-1}, ")")))
 axis(side = 1, at = seq(14, 0, by = -2), labels = seq(14, 0, by = -2)/10)
 abline(v = SummaryExShift[2, SummaryExShift[1, ] > 0.75]*10, lty = 2, col = "red")
 for(i in 1:length(Prob)){
