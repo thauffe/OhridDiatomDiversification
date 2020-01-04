@@ -29,7 +29,7 @@ source("AuxiliaryFunctions/extractAgesFromMcmcLog.R")
 
 Due to computational limits we will only extract 2 random sets out of the speciation and extinction times inferred by each of the 2 [BDS analyses](https://thauffe.github.io/OhridDiatomDiversification/endemic_richness.html).
 
-```{r extract_ages, dependson=knitr::all_labels()}
+```{r extract_ages, cache = TRUE, dependson=knitr::all_labels()}
 # 
 set.seed(23) # Reproducibility
 BDS <- 1:2 # Number of BDS analyses
@@ -46,7 +46,7 @@ for(i in BDS){
 
 We analysed the times of origination and extinction using a reversible jump (rj) MCMC ([Silvestro et al. 2019](https://www.cambridge.org/core/journals/paleobiology/article/improved-estimation-of-macroevolutionary-rates-from-fossil-data-using-a-bayesian-framework/334F08A74A6C92F1FEAD91A71FE59A1C)) analysis. Marginal speciation and extinction rates were obtained from 2,000,000 rj-MCMC iterations with sampling every 2,500 iterations after discarding the first 50,000 iterations as burn-in. 
 
-```{r bd, dependson=knitr::all_labels()}
+```{r bd, cache = TRUE, dependson=knitr::all_labels()}
 runPyRateShift <- function(Fix, i){
         system( paste("python2 PyRate/PyRate.py",
                     paste0("-d Results/BD/", Fix[i], ".txt"),
@@ -73,7 +73,7 @@ stopImplicitCluster()
 
 Check effective sampling sizes
 
-```{r ess, dependson=knitr::all_labels()}
+```{r ess, cache = TRUE, dependson=knitr::all_labels()}
 McmcLogFiles <- list.files("Results/BD/pyrate_mcmc_logs", pattern = "rj_mcmc.log")
 McmcLogs <- vector(mode = "list", length(McmcLogFiles)) 
 for(i in 1:length(McmcLogFiles)){
@@ -85,7 +85,7 @@ lapply( McmcLogs, function(x) apply(x, 2, function(y) round(effectiveSize(as.mcm
 
 Summarize from the posterior distribution the number of shifts in speciation and extinction rates and their ages. 
 
-```{r age_shifts, dependson=knitr::all_labels()}
+```{r age_shifts, cache = TRUE, dependson=knitr::all_labels()}
 SpRj <- list.files("Results/BD/pyrate_mcmc_logs/", pattern = "sp_rates")
 ExRj <- list.files("Results/BD/pyrate_mcmc_logs/", pattern = "ex_rates")
 EdgeShift <- 13.65
@@ -185,7 +185,7 @@ SummaryExShift
 
 Plot speciation and extinction rates (including shifts) through time. 
 
-```{r plot_shifts, dependson=knitr::all_labels()}
+```{r plot_shifts, cache = TRUE, dependson=knitr::all_labels()}
 Prob <- seq(0.95, 0.05, by = -0.05)
 NetDivThroughTimeHPD <- ExThroughTimeHPD <- SpThroughTimeHPD <- vector(mode = "list", length(Prob)) 
 for(i in 1:length(Prob)){

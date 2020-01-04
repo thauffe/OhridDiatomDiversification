@@ -3,3 +3,4 @@ nonendemic_richness_cache/
 nonendemic_richness_files/
 diversification_dynamic_cache/
 diversification_dynamic_files/
+*.log

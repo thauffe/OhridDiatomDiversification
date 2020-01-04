@@ -1,0 +1,97 @@
+---
+title: "Wilke et al. diversification rates and ages of rate shifts"
+output: html_document
+---
+
+<br>
+
+we inferred whether species richness and climate and environmental conditions influenced speciation and extinction rates and if the effects differ among time strata. For this, we employed the univariate birth–death shift model ([Silvestro & Schnitzler 2018](https://books.google.es/books?hl=en&lr=&id=GWxODwAAQBAJ&oi=fnd&pg=PA217&dq=info:dgN-N3FJYWcJ:scholar.google.com&ots=tasNt4b38I&sig=BZpHdpXYjm6kYo4B7nhFfbeSvJY&redir_esc=y#v=onepage&q&f=false)) with linear effects implemented in [PyRate](https://github.com/dsilvestro/PyRate). Testing for diversity-dependent diversification also required the constraint of the correlation of diversity with speciation and extinction rates to be less or greater than zero, respectively. Diversity refers here to the sum of endemic and non‑endemic species. Prior to the analyses, all covariates were scaled to a mean of zero and unit variance to compare their correlation strength γ. All unifactorial diversification models were ranked by their fit as quantified through Bayes Factors obtained by thermodynamic integration. This approach down-weighted the contribution of the data on posterior likelihoods via 10 stepping‑stones, each using 4,000,000 MCMC iterations, sampling every 10,000 iterations after discarding 20,000 iterations as burn-in.
+
+```{r setup, include=FALSE, message=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache=TRUE, autodep = TRUE)
+knitr::dep_auto()
+```
+
+
+```{r libraries, echo = TRUE, message = FALSE, warning = FALSE}
+# Load required packages
+library(coda)
+library(foreach)
+library(doParallel)
+```
+
+
+Due to computational limits we will only extract 2 random sets out of the speciation and extinction times inferred by each of the 2 [BDS analyses](https://thauffe.github.io/OhridDiatomDiversification/endemic_richness.html).
+
+```{r define_fun, cache = TRUE, dependson = knitr::all_labels()}
+BDS <- 1:2 # Number of BDS analyses
+RanSamp <- 2 # Random samples of speciation and extinction times
+Fix <- paste(paste0("Fix_", BDS), rep(1:RanSamp, each = length(BDS)), sep = "_")
+Fix <- sort(Fix)
+
+Covars <- c("DD",
+            "ArbPol", "ArbPolabschange",
+            "Ca", "Caabschange",
+            "DecOaks", "DecOaksabschange",
+            "Ins41", "Ins41abschange",
+            "Isotope", "Isotopeabschange",
+            "K", "Kabschange",
+            "Grainsize", "Grainsizeabschange",
+            "LR04", "LR04abschange",
+            "Medstack", "Medstackabschange",
+            "Quartz", "Quartzabschange",
+            "TIC", "TICabschange",
+            "TOC", "TOCabschange")
+Comb <- expand.grid(Fix, Covars)
+colnames(Comb) <- c("Fix", "Covariate")
+Comb$Model <- "1"
+
+NoShift <- Comb
+NoShift$stimesL <- c("13.66")
+NoShift$stimesM <- c("13.66")
+NoShiftNull <- data.frame(Fix = Fix, 
+                       Covariate = "KgrRda", 
+                       Model = "-1",
+                       stimesL = "13.66",
+                       stimesM = "13.66")
+NoShift <- rbind(NoShiftNull, NoShift)
+
+Shift <- Comb
+Shift$stimesL <- c("13.66 12.46 10.48")
+Shift$stimesM <- c("13.66 11.95")
+ShiftNull <- data.frame(Fix = Fix, 
+                       Covariate = "KgrRda", 
+                       Model = "-1",
+                       # Shifts from BD analysis
+                       stimesL = c("13.66 12.46 10.48"),
+                       stimesM = c("13.66 11.95"))
+Shift <- rbind(ShiftNull, Shift)
+```
+
+
+```{r no_shift, cache = TRUE, dependson = knitr::all_labels()}
+Files <- list.files("Results/BD/", ".txt")
+file.copy(Files, "Results/NoShift/")
+# Run on 2 cores in parallel
+Ncores <- 2
+registerDoParallel(Ncores)
+PyRateCont <- foreach(iter = 1:nrow(NoShift), 
+                      .inorder = FALSE) %dopar% runPyRateCont(iter, 
+                                                              NoShift, 
+                                                              Path = "NoShift")
+stopImplicitCluster()
+```
+
+
+
+
+
+### Plattform and resources
+
+```{r}
+Sys.time()
+sessionInfo()
+```
+
