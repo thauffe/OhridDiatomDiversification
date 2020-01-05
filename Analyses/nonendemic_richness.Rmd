@@ -188,9 +188,10 @@ lines(TimeSim, Boot[[2]][, 3], col = "magenta")
 Safe non-endemic richness as biotic covariate for the drivers of diversification.
 
 ```{r write_boot, cache = TRUE, dependson=knitr::all_labels()}
-TimeSeq <- seq(13.66, 0, length.out = 2000)
-DivAppr <- approx(TimeSim, Boot[[2]]$MeanSimDivAB, xout = TimeSeq)$y
+TimeSeq <- seq(13.7, 0, length.out = 2000)
+DivAppr <- approx(TimeSim * 10, Boot[[2]]$MeanSimDivAB, xout = TimeSeq)$y
 NonEnd <- data.frame(time = TimeSeq, NonEnd = DivAppr)
+NonEnd <- NonEnd[nrow(NonEnd):1, ]
 write.table(NonEnd, 
             file = "Results/Covariates/NonEnd.txt", 
             sep = "\t", row.names = FALSE, quote = FALSE)

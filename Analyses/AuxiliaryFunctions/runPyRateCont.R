@@ -1,4 +1,4 @@
-runPyRateCont <- function(i, Comb, Path){
+runPyRateCont <- function(i, Comb, Path, n, s){
   ArgsConstDD <- ""
   # Covariate
   ArgsCovar <- paste0("-c Results/Covariates/", Comb[i, "Covariate"], ".txt") 
@@ -6,7 +6,6 @@ runPyRateCont <- function(i, Comb, Path){
     # Get non-endemic diversity
     Div <- read.table("Results/Covariates/NonEnd.txt", 
                       sep = "\t", header = TRUE)
-    Div <- Div[nrow(Div):1, ] # Present to past
     # Get endemic diversity
     FixTmp <- read.table(paste0("Results/BD/", Comb[i, "Fix"], ".txt"),
                          sep = "\t", header = TRUE)
@@ -23,10 +22,9 @@ runPyRateCont <- function(i, Comb, Path){
     Div$Div <- Div$NonEnd + End
     AddTime <- seq(13.67, 50.00, length.out = 100)
     WriteDiv <- data.frame(time = c(Div$time, AddTime),
-                           SR = c(scale(Div$Div), rep(0, length(AddTime))))
+                           DD = c(scale(Div$Div), rep(0, length(AddTime))))
     ArgsConstDD <- "-constDD"
-    colnames(WriteDiv)[2] <- "DD"
-    DdName <- paste0("DD_", Comb[Args[1], "Fix"],".txt")
+    DdName <- paste0("DD_", Comb[i, "Fix"],".txt")
     write.table(WriteDiv, 
                 file = paste0("Results/Covariates/", DdName), 
                 sep = "\t", row.names = FALSE, quote = FALSE)
@@ -36,9 +34,9 @@ runPyRateCont <- function(i, Comb, Path){
                 paste0("-d Results/", Path,"/", Comb[i, "Fix"], ".txt"),
                 ArgsCovar, # Covariate
                 "-m", Comb[i, "Model"],
-                "-n 10", 
-                "-s 1", 
-                "-p 10", 
+                paste0("-n ", n), 
+                paste0("-s ", s), 
+                paste0("-p ", n), 
                 "-stimesL", Comb[i, "stimesL"],
                 "-stimesM", Comb[i, "stimesM"],
                 ArgsConstDD, 

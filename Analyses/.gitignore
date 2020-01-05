@@ -1,6 +1,14 @@
 # Ignore cached folders
+#######################
+abiotic_covariates_cache/
+abiotic_covariates_files/
 nonendemic_richness_cache/
 nonendemic_richness_files/
 diversification_dynamic_cache/
 diversification_dynamic_files/
+drivers_diversification_cache/
+drivers_diversification_files/
+
+# Ignore PyRate log-files
+#########################
 *.log

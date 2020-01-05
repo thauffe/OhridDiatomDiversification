@@ -20,6 +20,9 @@ knitr::dep_auto()
 library(coda)
 library(foreach)
 library(doParallel)
+
+# Auxiliary functions
+source("AuxiliaryFunctions/runPyRateCont.R")
 ```
 
 
@@ -52,7 +55,7 @@ NoShift <- Comb
 NoShift$stimesL <- c("13.66")
 NoShift$stimesM <- c("13.66")
 NoShiftNull <- data.frame(Fix = Fix, 
-                       Covariate = "KgrRda", 
+                       Covariate = "Grainsize", 
                        Model = "-1",
                        stimesL = "13.66",
                        stimesM = "13.66")
@@ -62,7 +65,7 @@ Shift <- Comb
 Shift$stimesL <- c("13.66 12.46 10.48")
 Shift$stimesM <- c("13.66 11.95")
 ShiftNull <- data.frame(Fix = Fix, 
-                       Covariate = "KgrRda", 
+                       Covariate = "Grainsize", 
                        Model = "-1",
                        # Shifts from BD analysis
                        stimesL = c("13.66 12.46 10.48"),
@@ -73,15 +76,28 @@ Shift <- rbind(ShiftNull, Shift)
 
 ```{r no_shift, cache = TRUE, dependson = knitr::all_labels()}
 Files <- list.files("Results/BD/", ".txt")
-file.copy(Files, "Results/NoShift/")
+file.copy(file.path("Results/BD", Files),
+          "Results/Covariates/NoShift/", overwrite = TRUE)
 # Run on 2 cores in parallel
 Ncores <- 2
 registerDoParallel(Ncores)
-PyRateCont <- foreach(iter = 1:nrow(NoShift), 
-                      .inorder = FALSE) %dopar% runPyRateCont(iter, 
-                                                              NoShift, 
-                                                              Path = "NoShift")
+PyRateCont <- foreach(iter = 1:nrow(NoShift),
+                      .inorder = FALSE) %dopar% runPyRateCont(iter,
+                                                              NoShift,
+                                                              Path = "Covariates/NoShift",
+                                                              n = 5000, s = 50)
 stopImplicitCluster()
+```
+
+
+
+```{r bf, results = "hide", cache = TRUE, dependson = knitr::all_labels()}
+system( paste0("python2 PyRate/PyRateContinuous2.py", 
+               " -mL Results/Covariates/NoShift/",
+               " -b 10") )
+# Remove the cold chains from HDD
+ColdChains <- list.files("Results/Covariates/NoShift/", pattern = "cold")
+file.remove(paste0("Results/Covariates/NoShift/", ColdChains))
 ```
 
 

@@ -8,11 +8,14 @@ output: html_document
 Trends in all univariate local and regional proxy time series (that is, signal separated from stochastic noise) were recovered by following the modeling protocol for paleoecological time‑series (Simpson 2018). Due to the size of the dataset, the ‘bam’ implementation of the recommended generalized additive models (GAM) was applied using the package ‘mgcv’ 1.8-22 (Wood 2011) for the R 3.6-1 statistical programming language (R Core Team 2019). The auto-regressive option accounted for the temporal autocorrelation in the proxies time-series. Due to the multivariate nature of the grain size composition, a redundancy analysis (RDA) was performed with polynomials of time as predictors of isometric logarithmic ratio transformed values by using the R package ‘composition’ 1.40.1 (Boogaart et al. 2014) and ‘vegan’ 2.4.4 (Oksanen et al. 2017). The first derivative of the smoothing splines (GAM), the polynomials (RDA) and the linearly interpolated global proxies informed on the change of the climate and environmental parameters per 1000 years.
 
 ```{r setup, include=FALSE, message=FALSE}
+library(knitr)
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache=TRUE, autodep = TRUE)
+knitr::dep_auto()
 ```
 
 
-```{r, echo = TRUE, message = FALSE, warning = FALSE}
+```{r libraries, echo = TRUE, message = FALSE, warning = FALSE}
 # Load required packages
 library(palinsol)
 library(mgcv)
@@ -27,7 +30,7 @@ source("AuxiliaryFunctions/plotCovariate.R")
 ```
 
 
-```{r}
+```{r boundaries, cache = TRUE, dependson = knitr::all_labels()}
 MaxTime <- 1366
 TimeSeq <- seq(0, MaxTime+1, length = 2000+1)
 
@@ -52,7 +55,7 @@ LR04[, 2] <- LR04[, 2] / 1000
 
 Medstack δ18O planktonic isotope ratios in parts per thousand relative to VPDB
 
-```{r}
+```{r medstack, cache = TRUE, dependson = knitr::all_labels()}
 # Read data
 Medstack <- read.table("Data/MEDSTACK_Wang2010.txt", sep = "\t", header = TRUE)
 
@@ -84,7 +87,7 @@ write.table(WriteMed[, c(1, 3)],
 
 LR04 benthic δ18O stack isotope ratios in parts per thousand relative to VPDB
 
-```{r}
+```{r lr04, cache = TRUE, dependson = knitr::all_labels()}
 LR04Values <- read.table("Data/LR04stack.txt", header = TRUE, skip = 4, sep = "\t")
 colnames(LR04Values) <- c("Time", "LR04", "SE")
 
@@ -116,7 +119,7 @@ write.table(WriteLR04[, c(1, 3)],
 
 Northern Hemisphere summer insolation at the latitude of Lake Ohrid (41° N)
 
-```{r, message=FALSE}
+```{r ins, cache = TRUE, dependson = knitr::all_labels(), message=FALSE}
 data(BER78) 
 SplineT <- seq(0, MaxTime, length = 2000)
 Times <- -seq(-1, MaxTime + 1, length = 2000 + 2) * 1000
@@ -158,7 +161,7 @@ write.table(WriteIns41[, c(1, 3)],
 
 Percentages of arboreal pollen excluding Pinus pollen at Lake Ohrid
 
-```{r}
+```{r arbpol, cache = TRUE, dependson = knitr::all_labels()}
 ArbPol <- read.table("Data/ArborealPollen.txt", header = TRUE, sep = "\t")
 ArbPol2 <- ArbPol[nrow(ArbPol):1, ]
 ArbPol2[, 1] <- -ArbPol2[, 1]
@@ -197,7 +200,7 @@ write.table(WriteArbPol[, c(1, 3)],
 
 Percentage of pollen from deciduous oaks at Lake Ohrid
 
-```{r}
+```{r oaks, cache = TRUE, dependson = knitr::all_labels()}
 DecOaks <- read.table("Data/DeciduousOaks.txt", header = TRUE, sep = "\t")
 DecOaks2 <- DecOaks[nrow(DecOaks):1, ]
 DecOaks2[, 1] <- -DecOaks2[, 1]
@@ -235,7 +238,7 @@ write.table(WriteDecOaks[, c(1, 3)],
 
 Lake Ohrid δ18Olakewater based on calcite and siderite δ18O information
 
-```{r}
+```{r isotope, cache = TRUE, dependson = knitr::all_labels()}
 Isotope <- read.table("Data/OxygenIsotope.txt", header = TRUE, sep = "\t")
 Isotope2 <- Isotope[nrow(Isotope):1, ]
 Isotope2$Age <- -Isotope2$Age
@@ -274,7 +277,7 @@ write.table(WriteIsotope[, c(1, 3)],
 
 Lake Ohrid total inorganic carbon (TIC) concentrations
 
-```{r}
+```{r tic, cache = TRUE, dependson = knitr::all_labels()}
 Tic <- read.table("Data/TIC.txt", header = TRUE, sep = "\t")
 Tic2 <- Tic[nrow(Tic):1, ]
 Tic2[, 1] <- -Tic2[, 1]
@@ -312,7 +315,7 @@ write.table(WriteTic[, c(1, 3)],
 
 Lake Ohrid total organic carbon (TOC) concentrations
 
-```{r}
+```{r toc, cache = TRUE, dependson = knitr::all_labels()}
 Toc <- read.table("Data/TOC.txt", header = TRUE, sep = "\t")
 Toc2 <- Toc[nrow(Toc):1, ]
 Toc2[, 1] <- -Toc2[, 1]
@@ -350,7 +353,7 @@ write.table(WriteToc[, c(1, 3)],
 
 Lake Ohrid potassium (K) counts from XRF scanning
 
-```{r}
+```{r k, cache = TRUE, dependson = knitr::all_labels()}
 K <- read.table("Data/Potassium.txt", header = TRUE, sep = "\t")
 K2 <- K[nrow(K):1, ]
 K2$Age <- -K2$Age
@@ -394,7 +397,7 @@ rm("K", "K2", "KBam1", "KBam2") # Safe memory
 
 Lake Ohrid calcium (Ca) counts from XRF scanning
 
-```{r}
+```{r ca, cache = TRUE, dependson = knitr::all_labels()}
 Ca <- read.table("Data/Calcium.txt", header = TRUE, sep = "\t")
 Ca2 <- Ca[nrow(Ca):1, ]
 Ca2$Age <- -Ca2$Age
@@ -438,7 +441,7 @@ rm("Ca", "Ca2", "CaBam1", "CaBam2") # Safe memory
 
 Lake Ohrid relative sedimentary quartz content
 
-```{r}
+```{r quartz, cache = TRUE, dependson = knitr::all_labels()}
 Quartz <- read.table("Data/Quartz.txt", header = TRUE, sep = "\t")
 Quartz2 <- Quartz[nrow(Quartz):1, ]
 Quartz2[, 1] <- -Quartz2[, 1]
@@ -476,7 +479,7 @@ write.table(WriteQuartz[, c(1, 3)],
 
 Lake Ohrid grain size information (summarized by ordination)
 
-```{r}
+```{r grainsize, cache = TRUE, dependson = knitr::all_labels()}
 Grainsize <- read.table("Data/Grainsize.txt", header = TRUE, sep = "\t")
 # Combine all types of sand into one category
 Grainsize$SAND <- Grainsize$VERY_COARSE_SAND + Grainsize$COARSE_SAND + Grainsize$MEDIUM_SAND + Grainsize$FINE_SAND + Grainsize$VERY_FINE_SAND
@@ -521,11 +524,22 @@ NewData <- as.data.frame(NewData)
 colnames(NewData) <- colnames(Poly2)
 MinusH <- -predict(GrainsizeRdaSel, newdata = NewData, type = "lc")[, 1]
 GrainsizeDeriv <- (PlusH - MinusH) / 2*H
+GrainsizePred <- scale(GrainsizePred)
 
-plotCovariate(SplineT, scale(GrainsizePred), LR04,
+plotCovariate(SplineT, GrainsizePred, LR04,
               ylab = "Grain size",
               col = "blue", ylim = c(-2, 6), 
               Raw = cbind(Grainsize2$Age, scale(GrainsizeRobPca[, 1])))
+
+WriteGrainsize <- data.frame(time = c(SplineT, AddTime) / 100,
+                             Grainsize = c(GrainsizePred, rep(0, length(AddTime))),
+                             Grainsizeabschange = c(scale(GrainsizeDeriv), rep(0, length(AddTime))))
+write.table(WriteGrainsize[, c(1, 2)], 
+            file = "Results/Covariates/Grainsize.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(WriteGrainsize[, c(1, 3)], 
+            file = "Results/Covariates/Grainsizeabschange.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
 ```
 
 
