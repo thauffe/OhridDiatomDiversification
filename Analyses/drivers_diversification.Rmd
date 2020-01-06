@@ -1,11 +1,11 @@
 ---
-title: "Wilke et al. diversification rates and ages of rate shifts"
+title: "Wilke et al. drivers of diversification rates"
 output: html_document
 ---
 
 <br>
 
-we inferred whether species richness and climate and environmental conditions influenced speciation and extinction rates and if the effects differ among time strata. For this, we employed the univariate birth–death shift model ([Silvestro & Schnitzler 2018](https://books.google.es/books?hl=en&lr=&id=GWxODwAAQBAJ&oi=fnd&pg=PA217&dq=info:dgN-N3FJYWcJ:scholar.google.com&ots=tasNt4b38I&sig=BZpHdpXYjm6kYo4B7nhFfbeSvJY&redir_esc=y#v=onepage&q&f=false)) with linear effects implemented in [PyRate](https://github.com/dsilvestro/PyRate). Testing for diversity-dependent diversification also required the constraint of the correlation of diversity with speciation and extinction rates to be less or greater than zero, respectively. Diversity refers here to the sum of endemic and non‑endemic species. Prior to the analyses, all covariates were scaled to a mean of zero and unit variance to compare their correlation strength γ. All unifactorial diversification models were ranked by their fit as quantified through Bayes Factors obtained by thermodynamic integration. This approach down-weighted the contribution of the data on posterior likelihoods via 10 stepping‑stones, each using 4,000,000 MCMC iterations, sampling every 10,000 iterations after discarding 20,000 iterations as burn-in.
+We inferred whether species richness and climate and environmental conditions influenced speciation and extinction rates and if the effects differ among time strata. For this, we employed the univariate birth–death shift model ([Silvestro & Schnitzler 2018](https://books.google.es/books?hl=en&lr=&id=GWxODwAAQBAJ&oi=fnd&pg=PA217&dq=info:dgN-N3FJYWcJ:scholar.google.com&ots=tasNt4b38I&sig=BZpHdpXYjm6kYo4B7nhFfbeSvJY&redir_esc=y#v=onepage&q&f=false)) with linear effects implemented in [PyRate](https://github.com/dsilvestro/PyRate). Testing for diversity-dependent diversification also required the constraint of the correlation of diversity with speciation and extinction rates to be less or greater than zero, respectively. Diversity refers here to the sum of endemic and non‑endemic species. Prior to the analyses, all covariates were scaled to a mean of zero and unit variance to compare their correlation strength γ (see [covariates](https://thauffe.github.io/OhridDiatomDiversification/abiotic_covariates.html)). All unifactorial diversification models were ranked by their fit as quantified through Bayes Factors obtained by thermodynamic integration. This approach down-weighted the contribution of the data on posterior likelihoods via 10 stepping‑stones, each using 4,000,000 MCMC iterations, sampling every 10,000 iterations after discarding 20,000 iterations as burn-in.
 
 ```{r setup, include=FALSE, message=FALSE}
 library(knitr)
@@ -23,10 +23,13 @@ library(doParallel)
 
 # Auxiliary functions
 source("AuxiliaryFunctions/runPyRateCont.R")
+source("AuxiliaryFunctions/calcBayesFactor.R")
+source("AuxiliaryFunctions/plotDrivers.R")
 ```
 
-
 Due to computational limits we will only extract 2 random sets out of the speciation and extinction times inferred by each of the 2 [BDS analyses](https://thauffe.github.io/OhridDiatomDiversification/endemic_richness.html).
+
+First, we set up the files `NoShift` and `Shift` as template to instruct PyRateContinuous ([Silvestro & Schnitzler 2018](https://books.google.es/books?hl=en&lr=&id=GWxODwAAQBAJ&oi=fnd&pg=PA217&dq=info:dgN-N3FJYWcJ:scholar.google.com&ots=tasNt4b38I&sig=BZpHdpXYjm6kYo4B7nhFfbeSvJY&redir_esc=y#v=onepage&q&f=false)) on the covariate and whether there are shift in rates or not.
 
 ```{r define_fun, cache = TRUE, dependson = knitr::all_labels()}
 BDS <- 1:2 # Number of BDS analyses
@@ -73,11 +76,16 @@ ShiftNull <- data.frame(Fix = Fix,
 Shift <- rbind(ShiftNull, Shift)
 ```
 
+The function `runPyRateCont` is a wrapper around PyRateContinuous and uses the `NoShift` and `Shift` templates to infer the covariate influence on speciation and extinction rates in parallel on two CPU cores.
+
+For this reproducible example we will run less iterations than 4,000,000 MCMC iterations and sample more often than every 10,000 iterations.
+
+Covariate influence without shifts.
 
 ```{r no_shift, cache = TRUE, dependson = knitr::all_labels()}
 Files <- list.files("Results/BD/", ".txt")
 file.copy(file.path("Results/BD", Files),
-          "Results/Covariates/NoShift/", overwrite = TRUE)
+          "Results/Covariates/NoShift", overwrite = TRUE)
 # Run on 2 cores in parallel
 Ncores <- 2
 registerDoParallel(Ncores)
@@ -85,22 +93,202 @@ PyRateCont <- foreach(iter = 1:nrow(NoShift),
                       .inorder = FALSE) %dopar% runPyRateCont(iter,
                                                               NoShift,
                                                               Path = "Covariates/NoShift",
-                                                              n = 5000, s = 50)
+                                                              n = 10000, s = 100)
 stopImplicitCluster()
 ```
 
+Covariate influence with shifts.
 
+```{r shift, cache = TRUE, dependson = knitr::all_labels()}
+Files <- list.files("Results/BD/", ".txt")
+file.copy(file.path("Results/BD", Files),
+          "Results/Covariates/Shift", overwrite = TRUE)
+# Run on 2 cores in parallel
+Ncores <- 2
+registerDoParallel(Ncores)
+PyRateCont <- foreach(iter = 1:nrow(NoShift),
+                      .inorder = FALSE) %dopar% runPyRateCont(iter,
+                                                              Shift,
+                                                              Path = "Covariates/Shift",
+                                                              n = 10000, s = 100)
+stopImplicitCluster()
+```
 
-```{r bf, results = "hide", cache = TRUE, dependson = knitr::all_labels()}
+All unifactorial diversification models were ranked by their fit as quantified through Bayes Factors obtained by thermodynamic integration.
+
+```{r bf, cache = TRUE, dependson = knitr::all_labels()}
 system( paste0("python2 PyRate/PyRateContinuous2.py", 
                " -mL Results/Covariates/NoShift/",
                " -b 10") )
+
+system( paste0("python2 PyRate/PyRateContinuous2.py", 
+               " -mL Results/Covariates/Shift/",
+               " -b 10") )
+```
+
+```{r remove_cold, results = "hide", cache = TRUE, dependson = knitr::all_labels()}
 # Remove the cold chains from HDD
 ColdChains <- list.files("Results/Covariates/NoShift/", pattern = "cold")
 file.remove(paste0("Results/Covariates/NoShift/", ColdChains))
+
+ColdChains <- list.files("Results/Covariates/Shift/", pattern = "cold")
+file.remove(paste0("Results/Covariates/Shift/", ColdChains))
 ```
 
+The next chunk ranks the covariates according to the difference in the Bayes Factor K to the best-fit model within [replicated datasets](https://thauffe.github.io/OhridDiatomDiversification/diversification_dynamic.html) and quantifies the uncertainty in the correlation parameter γ between rates and covariates across all replicates through 95% HPD intervals.
 
+```{r summarize, cache = TRUE, dependson = knitr::all_labels()}
+Nrep <- length(BDS) * RanSamp
+Ncovar <- 26
+Nrow <- Nrep * Ncovar
+From <- seq(1, Nrow, by = Ncovar)
+To <- seq(Ncovar, Nrow, by = Ncovar)
+NrowBf <- 4 + Nrow/Ncovar
+BfLa  <- as.data.frame(matrix(NA_real_, nrow = Ncovar, ncol = NrowBf))
+rownames(BfLa) <- c("Arboreal pollen", "Arboreal pollen change",
+                    "Ca", "Ca change",
+                    "Diversity",
+                    "Deciduous oaks", "Deciduous oaks change",
+                    "Constant",
+                    "Grain size", "Grain size change",
+                    "Summer insolation", "Summer insolation change",
+                    "Isotope", "Isotope change",
+                    "K", "K change",
+                    "LR04", "LR04 change",
+                    "Medstack", "Medstack change",
+                    "Quartz", "Quartz change",
+                    "TIC", "TIC change",
+                    "TOC", "TOC change")
+BfLa[, NrowBf] <-  c(rep("red", 2),
+                     rep("blue", 2),
+                     "blue",
+                     rep("red", 2),
+                     "grey",
+                     rep("red", 2),
+                     rep("blue", 2),
+                     rep("blue", 2),
+                     rep("blue", 2),
+                     rep("green", 2),
+                     rep("green", 2),
+                     rep("blue", 2),
+                     rep("blue", 2),
+                     rep("blue", 2)) 
+BfMu2 <- BfMu1 <- BfMu <- BfLa3 <- BfLa2 <- BfLa1 <- BfLa
+
+DdMaLi <- read.table("Results/Covariates/NoShift/marginal_likelihoods.txt", 
+                     header = TRUE, sep = "\t", check.names = FALSE, fill = NA)
+for(i in 1:Nrep){
+  DdMaLiTmp <- DdMaLi[From[i]:To[i], ]
+  BfLa[, i] <- calcBayesFactor(DdMaLiTmp$lik_L_13-0)
+  BfMu[, i] <- calcBayesFactor(DdMaLiTmp$lik_M_13-0)
+}
+BfLa[, NrowBf - 3] <- rowMeans(BfLa[, 1:(NrowBf - 4)])
+BfMu[, NrowBf - 3] <- rowMeans(BfMu[, 1:(NrowBf - 4)])
+
+for(i in 1:Ncovar){
+  S <- seq(i, nrow(DdMaLi), by = Ncovar)
+  File <- DdMaLi$file_name[S]
+  Gmtmp <- Gltmp <- matrix(NA_real_, 
+                           nrow = 90, 
+                           ncol = length(File))
+  for(y in 1:length(File)){
+    ContLog  <- read.table(paste0("Results/Covariates/NoShift/", File[y], ".log"), 
+                           header = TRUE, sep = "\t")
+    ContLog <- ContLog[ContLog$beta == 1, ]
+    ContLog <- ContLog[-c(1:round(nrow(ContLog)*0.1)), ] # Remove 10% burnin
+    Gltmp[, y] <- ContLog[, 14]
+    Gmtmp[, y] <- ContLog[, 16]
+  }
+  BfLa[i, (NrowBf - 2):(NrowBf - 1)] <- HPDinterval(coda:::mcmc(c(Gltmp)))
+  BfMu[i, (NrowBf - 2):(NrowBf - 1)] <- HPDinterval(coda:::mcmc(c(Gmtmp)))
+}
+
+
+DdMaLi <- read.table("Results/Covariates/Shift/marginal_likelihoods.txt", 
+                     header = TRUE, sep = "\t", check.names = FALSE, fill = NA)
+for(i in 1:Nrep){
+  DdMaLiTmp <- DdMaLi[From[i]:To[i], ]
+  BfLa1[, i] <- calcBayesFactor(DdMaLiTmp$lik_L_13-12)
+  BfLa2[, i] <- calcBayesFactor(DdMaLiTmp$lik_L_12-10)
+  BfLa3[, i] <- calcBayesFactor(DdMaLiTmp$lik_L_10-0)
+  BfMu1[, i] <- calcBayesFactor(DdMaLiTmp$lik_M_13-11)
+  BfMu2[, i] <- calcBayesFactor(DdMaLiTmp$lik_M_11-0)
+}
+BfLa1[, NrowBf - 3] <- rowMeans(BfLa1[, 1:(NrowBf - 4)])
+BfLa2[, NrowBf - 3] <- rowMeans(BfLa2[, 1:(NrowBf - 4)])
+BfLa3[, NrowBf - 3] <- rowMeans(BfLa3[, 1:(NrowBf - 4)])
+BfMu1[, NrowBf - 3] <- rowMeans(BfMu1[, 1:(NrowBf - 4)])
+BfMu2[, NrowBf - 3] <- rowMeans(BfMu2[, 1:(NrowBf - 4)])
+
+for(i in 1:Ncovar){
+  S <- seq(i, nrow(DdMaLi), by = Ncovar)
+  File <- DdMaLi$file_name[S]
+  Gm2tmp <- Gm1tmp <- Gl3tmp <- Gl2tmp <- Gl1tmp <- matrix(NA_real_, 
+                                                           nrow = 90, 
+                                                           ncol = length(File))
+  for(y in 1:length(File)){
+    ContLog  <- read.table(paste0("Results/Covariates/Shift/", File[y], ".log"), 
+                           header = TRUE, sep = "\t")
+    ContLog <- ContLog[ContLog$beta == 1, ]
+    ContLog <- ContLog[-c(1:round(nrow(ContLog)*0.1)), ] # Remove 10% burnin
+    Gl1tmp[, y] <- ContLog[, 20]
+    Gl2tmp[, y] <- ContLog[, 21]
+    Gl3tmp[, y] <- ContLog[, 22]
+    Gm1tmp[, y] <- ContLog[, 23]
+    Gm2tmp[, y] <- ContLog[, 24]
+  }
+  BfLa1[i, (NrowBf - 2):(NrowBf - 1)] <- HPDinterval(coda:::mcmc(c(Gl1tmp)))
+  BfLa2[i, (NrowBf - 2):(NrowBf - 1)] <- HPDinterval(coda:::mcmc(c(Gl2tmp)))
+  BfLa3[i, (NrowBf - 2):(NrowBf - 1)] <- HPDinterval(coda:::mcmc(c(Gl3tmp)))
+  BfMu1[i, (NrowBf - 2):(NrowBf - 1)] <- HPDinterval(coda:::mcmc(c(Gm1tmp)))
+  BfMu2[i, (NrowBf - 2):(NrowBf - 1)] <- HPDinterval(coda:::mcmc(c(Gm2tmp)))
+}
+
+
+BfLa <- BfLa[order(BfLa[, NrowBf - 3]), ]
+BfMu <- BfMu[order(BfMu[, NrowBf - 3]), ]
+
+BfLa1 <- BfLa1[order(BfLa1[, NrowBf - 3]), ]
+BfLa2 <- BfLa2[order(BfLa2[, NrowBf - 3]), ]
+BfLa3 <- BfLa3[order(BfLa3[, NrowBf - 3]), ]
+BfMu1 <- BfMu1[order(BfMu1[, NrowBf - 3]), ]
+BfMu2 <- BfMu2[order(BfMu2[, NrowBf - 3]), ]
+```
+
+Plots to summarize the results of the phenomenological diversification analyses of covariate influence on speciation and extinction rates.
+
+```{r summary_plot, cache = TRUE, dependson = knitr::all_labels()}
+plotDrivers(BfLa, Klim = 180, 
+            GammaLab = expression(gamma [lambda]), 
+            Mtext = "Speciation period full (1.36 - 0 Myr ago)",
+            SubPlot = "a")
+plotDrivers(BfLa1, Klim = 50, 
+            GammaLab = expression(gamma [lambda]), 
+            Mtext = "Speciation period SP1 (1.36 - 1.24 Myr ago)",
+            SubPlot = "b")
+plotDrivers(BfLa2, Klim = 10, 
+            GammaLab = expression(gamma [lambda]), 
+            Mtext = "Speciation period SP2 (1.24 - 1.05 Myr ago)",
+            SubPlot = "c")
+plotDrivers(BfLa3, Klim = 10, 
+            GammaLab = expression(gamma [lambda]), 
+            Mtext = "Speciation period SP3 (1.05 - 0 Myr ago)",
+            SubPlot = "d")
+plotDrivers(BfMu, Klim = 25, 
+            GammaLab = expression(gamma [mu]), 
+            Mtext = "Extinction period full (1.36 - 0 Myr ago)",
+            SubPlot = "e")
+plotDrivers(BfMu1, Klim = 10, 
+            GammaLab = expression(gamma [mu]), 
+            Mtext = "Extinction period EP1 (1.36 - 1.19 Myr ago)",
+            SubPlot = "f")
+plotDrivers(BfMu2, Klim = 10, 
+            GammaLab = expression(gamma [mu]), 
+            Mtext = "Extinction period EP2 (1.19 - 0 Myr ago)",
+            SubPlot = "g")
+```
+
+*Comparison of relative model support and correlation strength of speciation and extinction rates with climate, environmental and diversity proxies.* Plots summarize the results of the phenomenological diversification analyses of covariate influence over the entire period of 1.36 Myr (a, e) and within the three speciation (b–d) and two extinction rate periods (f, g). For environmental and climate proxies both the influence of the change of parameters per 1,000 years and the influence of the total value was tested. Left panels of the plots show the ranking of covariates according to the difference in the Bayes Factor K to the best-fit model within [replicated datasets](https://thauffe.github.io/OhridDiatomDiversification/diversification_dynamic.html) (dots), thereby integrating the uncertainty in speciation and extinction times. Lines in the right panels quantify the uncertainty in the correlation parameter γ between rates and covariates across all replicates through 95% HPD intervals. Covariates with a correlation significantly different from zero do not intersect the grey dashed line. Covariates shown to the left of the dashed line (–) are negatively correlated, to the right of the dashed line (+) are positively correlated.
 
 
 
