@@ -10,3 +10,5 @@ Analyses of Wilke et al. on diatom diversification in Lake Ohrid
 [diversification periods](https://thauffe.github.io/OhridDiatomDiversification/diversification_dynamic.html)
 
 [covariate influence](https://thauffe.github.io/OhridDiatomDiversification/drivers_diversification.html)
+
+[equilibrium diversity](https://thauffe.github.io/OhridDiatomDiversification/equilibrium_diversity.html)

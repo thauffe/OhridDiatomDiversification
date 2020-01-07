@@ -9,41 +9,34 @@ The state of equilibrium diversity was inferred from the correlation γ of diver
 
 ```{r setup, include=FALSE, message=FALSE}
 library(knitr)
-knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_chunk$set(cache=TRUE, autodep = TRUE)
-knitr::dep_auto()
 ```
 
 
 ```{r libraries, echo = TRUE, message = FALSE, warning = FALSE}
 # Load required packages
 library(coda)
-
-# Auxiliary functions
-
 ```
 
-Due to computational limits we will only extract 2 random sets out of the speciation and extinction times inferred by each of the 2 [BDS analyses](https://thauffe.github.io/OhridDiatomDiversification/endemic_richness.html).
 
-First, we set up the files `NoShift` and `Shift` as template to instruct PyRateContinuous ([Silvestro & Schnitzler 2018](https://books.google.es/books?hl=en&lr=&id=GWxODwAAQBAJ&oi=fnd&pg=PA217&dq=info:dgN-N3FJYWcJ:scholar.google.com&ots=tasNt4b38I&sig=BZpHdpXYjm6kYo4B7nhFfbeSvJY&redir_esc=y#v=onepage&q&f=false)) on the covariate and whether there are shift in rates or not.
 
-```{r calc_equilibrium, cache = TRUE, dependson = knitr::all_labels()}
+```{r calc_equilibrium}
 BDS <- 1:2 # Number of BDS analyses
 RanSamp <- 2 # Random samples of speciation and extinction times
 Fix <- paste(paste0("Fix_", BDS), rep(1:RanSamp, each = length(BDS)), sep = "_")
 Fix <- sort(Fix)
 N <- RanSamp * length(BDS)
+M <- 90 # MCMC iterations
 
-SameSr <- 50:400 # Same richness for all replicates
+SameSr <- 50:350 # Same richness for all replicates
 
 # Relationship of lambda and mu with diversity:
 ###############################################
 DepMu <- DepLambda <- matrix(NA_real_, 
-                             nrow = 90 * N, 
+                             nrow = M * N, 
                              ncol = length(SameSr))
 # Equilibrium level:
 ####################
-EqDD <- rep(NA_real_, 90 * N)
+EqDiv <- rep(NA_real_, M * N)
 
 for(i in 1:N){
   # Get non-endemic diversity
@@ -78,18 +71,46 @@ for(i in 1:N){
   DepMuTmp <- apply( ContLog[, c(12, 16)], 1, function(x) x[1] + x[1]*x[2]*SrScale ) * 10
   DepLambdaTmp[DepLambdaTmp < 0] <- 0
   DepMuTmp[DepMuTmp < 0] <- 0
-  DepLambda[ (1+(SubsampleSize*(i-1))):(SubsampleSize*i), ] <- t(DepLambdaTmp)
-  DepMu[ (1+(SubsampleSize*(i-1))):(SubsampleSize*i), ] <- t(DepMuTmp)
+  DepLambda[ (1+(M*(i-1))):(M*i), ] <- t(DepLambdaTmp)
+  DepMu[ (1+(M*(i-1))):(M*i), ] <- t(DepMuTmp)
+  # DepLaTTTmp <- t(apply( ContLog[, c(10, 14)], 1, function(x) x[1] + x[1]*x[2]*SrThroughTime ) * 10)
+  # DepMuTTTmp <- t(apply( ContLog[, c(12, 16)], 1, function(x) x[1] + x[1]*x[2]*SrThroughTime ) * 10)
+  # Index of equilibrium diversity to look up in SameSr
+  SrDepTmp <- t(DepLambdaTmp) - t(DepMuTmp)
+  EqDivIndex <- sapply( 1:nrow(SrDepTmp), function(x) 
+    if(any(SrDepTmp[x, ] <= 0)){min(which(SrDepTmp[x,] <= 0))} else {max(SameSr)})
+  EqDiv[(1+(M*(i-1))):(M*i)] <- SameSr[EqDivIndex]
 }
 ```
 
 
 
+```{r}
+DepLambdaHPD <- apply(DepLambda, 2, function(x) HPDinterval(as.mcmc(x)))
+DepMuHPD <- apply(DepMu, 2, function(x) HPDinterval(as.mcmc(x)))
+EqDivHPD <- HPDinterval(as.mcmc(EqDiv))
 
+par(las = 1, mar = c(5.1, 4.5, 0.1, 0.8))
+plot(1, 1, xlim = c(50, 350), ylim = c(0, 6), type = "n", xaxs = "i",
+     ylab = expression(paste("Rate (events ", lineage^{-1}, " ", Myr^{-1}, ")")),
+     xlab = "Diversity")
+rect(xleft = EqDivHPD[1], ybottom = par("usr")[3], 
+     xright = EqDivHPD[2], ytop = par("usr")[4],
+     col = adjustcolor("grey", alpha = 0.5), 
+     border = NA)
+polygon(c(SameSr, rev(SameSr)), 
+        c(DepLambdaHPD[1, ], rev(DepLambdaHPD[2, ])), 
+        col = adjustcolor("dodgerblue", alpha = 0.5), border = NA)
+polygon(c(SameSr, rev(SameSr)), 
+        c(DepMuHPD[1, ], rev(DepMuHPD[2, ])), 
+        col = adjustcolor("red", alpha = 0.5), border = NA)
+legend("top",  pch = 15, pt.cex = 1.5, bty = "n", 
+       legend = c("Speciation", "Extinction", "Equilibrium diversity"),
+       col = adjustcolor(c("dodgerblue", "red", "grey"), alpha = 0.5))
+box()
+```
 
-
-
-
+**Unattained Equilibrium diversity of Lake Ohrid diatoms** Speciation and extinction rates depending on diatom richness and equilibrating beyond `r EqDivHPD[1]` species.
 
 ### Plattform and resources
 
