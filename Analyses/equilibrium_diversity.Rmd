@@ -1,0 +1,100 @@
+---
+title: "Wilke et al. dynamic equilibrium analysis"
+output: html_document
+---
+
+<br>
+
+The state of equilibrium diversity was inferred from the correlation γ of diversity with speciation and extinction rates by predicting at which diversity level both rates equilibrate. Subsequently, we compared this level with the empirical diversity trajectory and calculated the 95% HPD.
+
+```{r setup, include=FALSE, message=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache=TRUE, autodep = TRUE)
+knitr::dep_auto()
+```
+
+
+```{r libraries, echo = TRUE, message = FALSE, warning = FALSE}
+# Load required packages
+library(coda)
+
+# Auxiliary functions
+
+```
+
+Due to computational limits we will only extract 2 random sets out of the speciation and extinction times inferred by each of the 2 [BDS analyses](https://thauffe.github.io/OhridDiatomDiversification/endemic_richness.html).
+
+First, we set up the files `NoShift` and `Shift` as template to instruct PyRateContinuous ([Silvestro & Schnitzler 2018](https://books.google.es/books?hl=en&lr=&id=GWxODwAAQBAJ&oi=fnd&pg=PA217&dq=info:dgN-N3FJYWcJ:scholar.google.com&ots=tasNt4b38I&sig=BZpHdpXYjm6kYo4B7nhFfbeSvJY&redir_esc=y#v=onepage&q&f=false)) on the covariate and whether there are shift in rates or not.
+
+```{r calc_equilibrium, cache = TRUE, dependson = knitr::all_labels()}
+BDS <- 1:2 # Number of BDS analyses
+RanSamp <- 2 # Random samples of speciation and extinction times
+Fix <- paste(paste0("Fix_", BDS), rep(1:RanSamp, each = length(BDS)), sep = "_")
+Fix <- sort(Fix)
+N <- RanSamp * length(BDS)
+
+SameSr <- 50:400 # Same richness for all replicates
+
+# Relationship of lambda and mu with diversity:
+###############################################
+DepMu <- DepLambda <- matrix(NA_real_, 
+                             nrow = 90 * N, 
+                             ncol = length(SameSr))
+# Equilibrium level:
+####################
+EqDD <- rep(NA_real_, 90 * N)
+
+for(i in 1:N){
+  # Get non-endemic diversity
+  Div <- read.table("Results/Covariates/NonEnd.txt", 
+                    sep = "\t", header = TRUE)
+  # Get endemic diversity
+  FixTmp <- read.table(paste0("Results/BD/", Fix[i], ".txt"), 
+                       sep = "\t", header = TRUE)
+  # Combined diversity
+  FirstApp <- sort(FixTmp$ts, decreasing = TRUE)
+  Increase <- rep(1, length(FirstApp))
+  LastApp <- sort(FixTmp$te, decreasing = TRUE)
+  Decrease <- rep(-1, length(LastApp))
+  Decrease[LastApp == 0] <- 0
+  Att <- data.frame(Time = c(FirstApp, LastApp), 
+                    Change = c(Increase, Decrease), 
+                    SR = NA_integer_)
+  Att <- Att[order(Att$Time, decreasing = TRUE), ]
+  Att$SR <- cumsum(Att$Change)
+  Att <- Att[min(which(Att$Time <= 13.66)):which(Att$Time == 0)[1], ]
+  End <- approx(Att[, c(1, 3)], xout = Div$time, method ="constant", rule = 2)$y
+  Div$Div <- Div$NonEnd + End
+  # RichThroughTime[i, ] <- Div$Div
+  # SrThroughTime <- scale(Div$Div)
+  SrScale <- (SameSr - mean(Div$Div)) / sd(Div$Div)
+  ContLog  <- read.table(paste0("Results/Covariates/NoShift/", Fix[i], 
+                                "_DD_0_s_13.66_13.66linSp_linEx_HP.log"), 
+                                  header = TRUE, sep = "\t")
+  ContLog <- ContLog[ContLog$beta == 1, ]
+  ContLog <- ContLog[-c(1:round(nrow(ContLog) * 0.1)), ] # Remove 10% burnin
+  DepLambdaTmp <- apply( ContLog[, c(10, 14)], 1, function(x) x[1] + x[1]*x[2]*SrScale ) * 10
+  DepMuTmp <- apply( ContLog[, c(12, 16)], 1, function(x) x[1] + x[1]*x[2]*SrScale ) * 10
+  DepLambdaTmp[DepLambdaTmp < 0] <- 0
+  DepMuTmp[DepMuTmp < 0] <- 0
+  DepLambda[ (1+(SubsampleSize*(i-1))):(SubsampleSize*i), ] <- t(DepLambdaTmp)
+  DepMu[ (1+(SubsampleSize*(i-1))):(SubsampleSize*i), ] <- t(DepMuTmp)
+}
+```
+
+
+
+
+
+
+
+
+
+### Plattform and resources
+
+```{r}
+Sys.time()
+sessionInfo()
+```
+
