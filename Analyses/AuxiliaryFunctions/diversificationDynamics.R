@@ -33,9 +33,11 @@ divDynamic <- function(Path,
                        Subphylum = NULL){
   SpRj <- list.files(Path, pattern = "sp_rates")
   ExRj <- list.files(Path, pattern = "ex_rates")
+  McmcLogs <- list.files(Path, pattern = "mcmc.log")
   if (!is.null(Subphylum)) {
     SpRj <- SpRj[grepl(Subphylum, SpRj)]
     ExRj <- ExRj[grepl(Subphylum, ExRj)]
+    McmcLogs <- ExRj[grepl(Subphylum, McmcLogs)]
   }
   EdgeShift <- 13.65
   TimeSeq <- seq(EdgeShift, 0, by = -0.05) 
@@ -54,29 +56,28 @@ divDynamic <- function(Path,
                         sep = "\t", fill = NA, col.names = paste0("V", 1:20))
     ExTmp <- read.table(paste0(Path, ExRj[i]), 
                         sep = "\t", fill = NA, col.names = paste0("V", 1:20))
+    LogTmp <- read.table(paste0(Path, McmcLogs[i]), sep = "\t", header = TRUE)
     for(y in 1:nrow(SpTmp)){
       # Speciation
       Sp1Tmp <- unlist( SpTmp[y, ] )
+      Kbirth <- LogTmp[y, "k_birth"]
       # Rarely there is a shift inferred earlier then 13.65
-      if (all(Sp1Tmp <= EdgeShift, na.rm = TRUE)){
-        # Which element is > 136 (i.e., the constrained edgeShift)
-        W136 <- which(Sp1Tmp >= EdgeShift)
-        ShiftTimesTmp <- na.omit(Sp1Tmp[W136:length(Sp1Tmp)])
-        # Get the rates for each time step:
-        SpThroughTime[Counter, ] <- approx(x = c(ShiftTimesTmp, 0), y = Sp1Tmp[1:(W136-1)], 
+      Shifts <- Sp1Tmp[(Kbirth+1):length(Sp1Tmp)]
+      Shifts <- na.omit(Shifts)
+      if (all(Shifts <= EdgeShift)) {
+        SpThroughTime[Counter, ] <- approx(x = c(Shifts, 0), y = Sp1Tmp[1:Kbirth], 
                                            xout = TimeSeq, method = "constant")$y
-        SpShifts[Counter, 1:length(ShiftTimesTmp)] <- ShiftTimesTmp
+        SpShifts[Counter, 1:length(Shifts)] <- Shifts
       }
       # Extinction
       Ex1Tmp <- unlist( ExTmp[y, ] )
-      if (all(Ex1Tmp <= EdgeShift, na.rm = TRUE)){
-        # Which element is > 136 (i.e., the constrained edgeShift)
-        W136 <- which(Ex1Tmp >= EdgeShift)
-        ShiftTimesTmp <- na.omit(Ex1Tmp[W136:length(Ex1Tmp)])
-        # Get the rates for each time step:
-        ExThroughTime[Counter, ] <- approx(x = c(ShiftTimesTmp, 0), y = Ex1Tmp[1:(W136-1)], 
+      Kdeath <- LogTmp[y, "k_death"]
+      Shifts <- Ex1Tmp[(Kdeath+1):length(Sp1Tmp)]
+      Shifts <- na.omit(Shifts)
+      if (all(Shifts <= EdgeShift)) {
+        ExThroughTime[Counter, ] <- approx(x = c(Shifts, 0), y = Ex1Tmp[1:Kdeath], 
                                            xout = TimeSeq, method = "constant")$y
-        ExShifts[Counter, 1:length(ShiftTimesTmp)] <- ShiftTimesTmp
+        ExShifts[Counter, 1:length(Shifts)] <- Shifts
       }
       Counter <- Counter + 1
     }
@@ -131,17 +132,20 @@ divDynamic <- function(Path,
   rownames(SummaryExShift) <- c("Frequency", "Age", "LwrHPD", "UprHPD")
   colnames(SummaryExShift) <- paste("Shift", 1:ncol(SummaryExShift))
   Res[[2]] <- SummaryExShift
+  Res[[3]] <- SpShifts
+  Res[[4]] <- ExShifts
   #######################################################################
   RateHPDs <- getRatesHPD(SpThroughTime,
                           ExThroughTime,
                           NetDivThroughTime,
                           Prob)
-  Res[[3]] <- RateHPDs
-  Res[[4]] <- SpThroughTime
-  Res[[5]] <- SpThroughTime
-  Res[[6]] <- NetDivThroughTime
+  Res[[5]] <- RateHPDs
+  Res[[6]] <- SpThroughTime
+  Res[[7]] <- SpThroughTime
+  Res[[8]] <- NetDivThroughTime
   #######################################################################
   names(Res) <- c("SummarySpShifts", "SummaryExShifts",
+                  "SpShifts", "ExShifts",
                   "RatesHPDs",
                   "SpThroughTime", "ExThroughTime", "NetDivThroughTime")
   return(Res)
